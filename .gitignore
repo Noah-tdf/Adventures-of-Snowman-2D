@@ -4,6 +4,7 @@
 [Bb]uild/
 [Bb]uilds/
 [Ll]ogs/
+*.log
 [Uu]ser[Ss]ettings/
 .vs/
 .vscode/
@@ -37,4 +38,3 @@ sysinfo.txt
 *.apk
 *.aab
 *.unitypackage
-

@@ -4,9 +4,11 @@ public class SnowGun : MonoBehaviour
 {
     [SerializeField] private Transform firePoint;
     [SerializeField] private float snowballSpeed = 7f;
-    [SerializeField] private float verticalDirectionRange = 0.45f;
-    [SerializeField] private float verticalSpawnOffset = -0.55f;
-    [SerializeField] private float forwardSpawnOffset = 1.05f;
+    [SerializeField] private float upwardDirectionRange = 0.05f;
+    [SerializeField] private float downwardDirectionRange = 0.28f;
+    [SerializeField] private float verticalSpawnOffset = -1.6f;
+    [SerializeField] private float forwardSpawnOffset = 0.95f;
+    [SerializeField] private float extraVerticalTravelOffset = 0.75f;
     private static Sprite snowballSprite;
 
     private void Start()
@@ -22,9 +24,12 @@ public class SnowGun : MonoBehaviour
     public void Fire()
     {
         Vector2 direction = GetRandomStraightDirection();
-        Vector3 basePosition = firePoint != null ? firePoint.position : transform.position;
+        Vector3 basePosition = transform.position;
         basePosition.y += verticalSpawnOffset;
-        Vector3 spawnPosition = basePosition + (Vector3)(direction * forwardSpawnOffset);
+        Vector3 spawnPosition = basePosition + new Vector3(
+            direction.x * forwardSpawnOffset,
+            direction.y * extraVerticalTravelOffset,
+            0f);
         spawnPosition.z = 0f;
         GameObject snowball = CreateSimpleSnowball(spawnPosition);
         Snowball snowballScript = snowball.GetComponent<Snowball>();
@@ -40,7 +45,7 @@ public class SnowGun : MonoBehaviour
     private Vector2 GetRandomStraightDirection()
     {
         float horizontalDirection = transform.position.x < 0f ? 1f : -1f;
-        float randomVertical = Random.Range(-verticalDirectionRange, verticalDirectionRange);
+        float randomVertical = Random.Range(-downwardDirectionRange, upwardDirectionRange);
         return new Vector2(horizontalDirection, randomVertical).normalized;
     }
 

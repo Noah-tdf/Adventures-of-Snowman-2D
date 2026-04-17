@@ -23,6 +23,20 @@ public class BalloonManager : MonoBehaviour
     private float minY;
     private float maxY;
 
+    public void ResetBalloons()
+    {
+        balloons.Clear();
+        wallsAssigned = false;
+        leftWallX = 0f;
+        rightWallX = 0f;
+        topWallY = 0f;
+        bottomWallY = 0f;
+        minX = 0f;
+        maxX = 0f;
+        minY = 0f;
+        maxY = 0f;
+    }
+
     public void RegisterBalloon(Balloon balloon)
     {
         if (balloon == null || balloons.Contains(balloon))
@@ -66,33 +80,57 @@ public class BalloonManager : MonoBehaviour
 
     private void AssignWallsFromStartingPositions()
     {
-        Balloon topBalloon = balloons[0];
-        Balloon bottomBalloon = balloons[0];
-        Balloon leftBalloon = balloons[0];
-        Balloon rightBalloon = balloons[0];
+        List<Balloon> remainingBalloons = new List<Balloon>(balloons);
+        Balloon topBalloon = remainingBalloons[0];
+        Balloon bottomBalloon = remainingBalloons[0];
 
-        for (int i = 0; i < balloons.Count; i++)
+        for (int i = 1; i < remainingBalloons.Count; i++)
         {
-            Vector3 position = balloons[i].GetLocalPosition();
+            Vector3 position = remainingBalloons[i].GetLocalPosition();
 
             if (position.y > topBalloon.GetLocalPosition().y)
             {
-                topBalloon = balloons[i];
+                topBalloon = remainingBalloons[i];
             }
 
             if (position.y < bottomBalloon.GetLocalPosition().y)
             {
-                bottomBalloon = balloons[i];
+                bottomBalloon = remainingBalloons[i];
             }
+        }
 
-            if (position.x < leftBalloon.GetLocalPosition().x)
-            {
-                leftBalloon = balloons[i];
-            }
+        remainingBalloons.Remove(topBalloon);
+        if (bottomBalloon != topBalloon)
+        {
+            remainingBalloons.Remove(bottomBalloon);
+        }
 
-            if (position.x > rightBalloon.GetLocalPosition().x)
+        Balloon leftBalloon;
+        Balloon rightBalloon;
+
+        if (remainingBalloons.Count >= 2)
+        {
+            leftBalloon = remainingBalloons[0].GetLocalPosition().x <= remainingBalloons[1].GetLocalPosition().x
+                ? remainingBalloons[0]
+                : remainingBalloons[1];
+            rightBalloon = leftBalloon == remainingBalloons[0] ? remainingBalloons[1] : remainingBalloons[0];
+        }
+        else
+        {
+            leftBalloon = balloons[0];
+            rightBalloon = balloons[0];
+
+            for (int i = 0; i < balloons.Count; i++)
             {
-                rightBalloon = balloons[i];
+                if (balloons[i].GetLocalPosition().x < leftBalloon.GetLocalPosition().x)
+                {
+                    leftBalloon = balloons[i];
+                }
+
+                if (balloons[i].GetLocalPosition().x > rightBalloon.GetLocalPosition().x)
+                {
+                    rightBalloon = balloons[i];
+                }
             }
         }
 

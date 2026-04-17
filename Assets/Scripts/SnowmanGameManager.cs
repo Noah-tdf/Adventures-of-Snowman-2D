@@ -10,6 +10,9 @@ using UnityEngine.UI;
 
 public class SnowmanGameManager : MonoBehaviour
 {
+    private const string MainMenuSceneName = "MainMenu";
+    private const string GameplaySceneName = "Adventure of A Snowman 2D";
+
     private enum StartMode
     {
         Landing,
@@ -51,6 +54,7 @@ public class SnowmanGameManager : MonoBehaviour
     }
 
     public static SnowmanGameManager Instance { get; private set; }
+    public bool GameIsPaused => currentState == GameState.Paused;
 
     private static StartMode pendingStartMode = StartMode.Landing;
     private static string pendingPlayerName = "Player";
@@ -67,17 +71,28 @@ public class SnowmanGameManager : MonoBehaviour
     private int currentScore;
 
     private Canvas mainCanvas;
+    private MainMenuCanvas mainMenuCanvas;
+    private PauseCanvas pauseCanvas;
+    private HudCanvas hudCanvas;
     private GameObject menuPanel;
     private GameObject highScorePanel;
     private GameObject hudPanel;
+    private Image menuPanelImage;
+    private Image buttonGroupImage;
+    private Outline buttonGroupOutline;
+    private RectTransform buttonGroupRect;
     private Text scoreText;
     private Text menuTitleText;
     private Text highScoreText;
     private Button pauseButton;
     private Button restartButton;
     private Button resumeButton;
+    private Button newGameButton;
     private Button saveGameButton;
+    private Button highScoresButton;
+    private Button exitButton;
     private InputField playerNameField;
+    private Sprite landingBackgroundSprite;
 
     private string ScoreFilePath => Path.Combine(Application.persistentDataPath, "snowman_scores.json");
     private string SaveFilePath => Path.Combine(Application.persistentDataPath, "snowman_save.json");
@@ -137,6 +152,7 @@ public class SnowmanGameManager : MonoBehaviour
 
         snowGuns.Add(snowGun);
         snowGuns.Sort((first, second) => first.transform.position.x.CompareTo(second.transform.position.x));
+        Debug.Log($"Registered gun: {snowGun.name} at x={snowGun.transform.position.x}");
     }
 
     public void RegisterBalloon(Balloon balloon)
@@ -173,14 +189,40 @@ public class SnowmanGameManager : MonoBehaviour
         currentState = GameState.GameOver;
         Time.timeScale = 0f;
         StopGunRoutine();
-        menuTitleText.text = "Purly Was Hit";
-        menuPanel.SetActive(true);
-        highScorePanel.SetActive(false);
-        hudPanel.SetActive(true);
-        pauseButton.interactable = false;
-        resumeButton.interactable = false;
-        restartButton.interactable = true;
-        saveGameButton.interactable = false;
+
+        if (pauseCanvas != null)
+        {
+            pauseCanvas.ShowPause("Purly Was Hit");
+            pauseCanvas.PrepareHighScores(BuildHighScoreText());
+        }
+        else
+        {
+            SetOverlayMenuLook();
+            menuTitleText.text = "Purly Was Hit";
+            menuPanel.SetActive(true);
+            highScorePanel.SetActive(false);
+            hudPanel.SetActive(true);
+        }
+
+        if (pauseButton != null)
+        {
+            pauseButton.interactable = false;
+        }
+
+        if (resumeButton != null)
+        {
+            resumeButton.interactable = false;
+        }
+
+        if (restartButton != null)
+        {
+            restartButton.interactable = true;
+        }
+
+        if (saveGameButton != null)
+        {
+            saveGameButton.interactable = false;
+        }
     }
 
     private void ApplyPendingStartMode()
@@ -200,6 +242,22 @@ public class SnowmanGameManager : MonoBehaviour
     private void UpdateSceneReferences()
     {
         snowGuns.Clear();
+        mainMenuCanvas = FindFirstObjectByType<MainMenuCanvas>(FindObjectsInactive.Include);
+        pauseCanvas = FindFirstObjectByType<PauseCanvas>(FindObjectsInactive.Include);
+        hudCanvas = FindFirstObjectByType<HudCanvas>(FindObjectsInactive.Include);
+
+        if (hudCanvas != null)
+        {
+            pauseButton = hudCanvas.PauseButton;
+            restartButton = hudCanvas.RestartButton;
+            resumeButton = hudCanvas.ResumeButton;
+            ApplyHudButtonIcons();
+        }
+
+        if (mainMenuCanvas == null && pauseCanvas == null && hudCanvas == null && mainCanvas == null)
+        {
+            BuildRuntimeUi();
+        }
 
         if (balloonManager == null)
         {
@@ -210,6 +268,8 @@ public class SnowmanGameManager : MonoBehaviour
         {
             balloonManager = gameObject.AddComponent<BalloonManager>();
         }
+
+        balloonManager.ResetBalloons();
 
         purly = FindFirstObjectByType<PurlyMovement>();
 
@@ -247,21 +307,42 @@ public class SnowmanGameManager : MonoBehaviour
         currentState = GameState.Landing;
         Time.timeScale = 0f;
         StopGunRoutine();
-        menuTitleText.text = string.Empty;
-        ShowPanels(true, false, false);
-        saveGameButton.interactable = File.Exists(SaveFilePath);
+        if (mainMenuCanvas != null)
+        {
+            mainMenuCanvas.gameObject.SetActive(true);
+            mainMenuCanvas.ShowMenu();
+            mainMenuCanvas.SetPlayerName(currentPlayerName);
+        }
+        else
+        {
+            SetLandingMenuLook();
+            menuTitleText.text = string.Empty;
+            ShowPanels(true, false, false);
+            saveGameButton.interactable = File.Exists(SaveFilePath);
+        }
+
+        if (pauseCanvas != null)
+        {
+            pauseCanvas.HidePause();
+        }
+
+        if (hudCanvas != null)
+        {
+            hudCanvas.ShowHud(false);
+        }
+
         UpdateScoreText();
     }
 
-    private void StartNewGame()
+    public void StartNewGame()
     {
         string playerNameToUse = GetTypedPlayerName();
 
-        if (purly == null || currentState == GameState.GameOver)
+        if (SceneManager.GetActiveScene().name != GameplaySceneName || purly == null || currentState == GameState.GameOver)
         {
             StopGunRoutine();
             Time.timeScale = 1f;
-            ReloadCurrentScene(StartMode.NewGame, playerNameToUse);
+            LoadGameplayScene(StartMode.NewGame, playerNameToUse);
             return;
         }
 
@@ -275,12 +356,13 @@ public class SnowmanGameManager : MonoBehaviour
         currentScore = 0;
         currentState = GameState.Playing;
         DeleteSavedGame();
+        HideAllMenuUi();
         ShowPlayingUi();
         UpdateScoreText();
         EnsureGunRoutine();
     }
 
-    private void PauseGame()
+    public void PauseGame()
     {
         if (currentState != GameState.Playing)
         {
@@ -290,14 +372,23 @@ public class SnowmanGameManager : MonoBehaviour
         SaveCurrentGame();
         currentState = GameState.Paused;
         Time.timeScale = 0f;
-        menuTitleText.text = "Game Paused";
-        ShowPanels(true, false, true);
-        resumeButton.interactable = true;
-        pauseButton.interactable = false;
-        saveGameButton.interactable = true;
+        if (pauseCanvas != null)
+        {
+            pauseCanvas.ShowPause("Game Paused");
+            pauseCanvas.PrepareHighScores(BuildHighScoreText());
+        }
+        else
+        {
+            SetOverlayMenuLook();
+            menuTitleText.text = "Game Paused";
+            ShowPanels(true, false, true);
+            resumeButton.interactable = true;
+            pauseButton.interactable = false;
+            saveGameButton.interactable = true;
+        }
     }
 
-    private void ResumeGame()
+    public void ResumeGame()
     {
         if (currentState != GameState.Paused)
         {
@@ -309,14 +400,14 @@ public class SnowmanGameManager : MonoBehaviour
         EnsureGunRoutine();
     }
 
-    private void RestartGame()
+    public void RestartGame()
     {
         StopGunRoutine();
         Time.timeScale = 1f;
-        ReloadCurrentScene(StartMode.NewGame, GetTypedPlayerName());
+        LoadGameplayScene(StartMode.NewGame, GetTypedPlayerName());
     }
 
-    private void ResumeSavedGame()
+    public void LoadSavedGame()
     {
         if (currentState == GameState.Paused)
         {
@@ -324,7 +415,23 @@ public class SnowmanGameManager : MonoBehaviour
             return;
         }
 
+        if (SceneManager.GetActiveScene().name != GameplaySceneName || purly == null)
+        {
+            StopGunRoutine();
+            Time.timeScale = 1f;
+            LoadGameplayScene(StartMode.ResumeSaved, GetTypedPlayerName());
+            return;
+        }
+
         ResumeSavedGameInternal();
+    }
+
+    public void ReturnToMainMenu()
+    {
+        StopGunRoutine();
+        Time.timeScale = 1f;
+        pendingStartMode = StartMode.Landing;
+        SceneManager.LoadScene(MainMenuSceneName);
     }
 
     private void ResumeSavedGameInternal()
@@ -341,7 +448,11 @@ public class SnowmanGameManager : MonoBehaviour
         currentScore = savedGame.score;
         currentState = GameState.Playing;
 
-        if (playerNameField != null)
+        if (mainMenuCanvas != null)
+        {
+            mainMenuCanvas.SetPlayerName(currentPlayerName);
+        }
+        else if (playerNameField != null)
         {
             playerNameField.text = currentPlayerName;
         }
@@ -358,13 +469,28 @@ public class SnowmanGameManager : MonoBehaviour
         EnsureGunRoutine();
     }
 
-    private void ShowHighScores()
+    public void ShowHighScores()
     {
+        string scoreList = BuildHighScoreText();
+
+        if (currentState == GameState.Paused && pauseCanvas != null)
+        {
+            pauseCanvas.PrepareHighScores(scoreList);
+            pauseCanvas.ToggleHighScores();
+            return;
+        }
+
+        if (mainMenuCanvas != null)
+        {
+            mainMenuCanvas.ShowHighScores(scoreList);
+            return;
+        }
+
         highScorePanel.SetActive(true);
-        highScoreText.text = BuildHighScoreText();
+        highScoreText.text = scoreList;
     }
 
-    private void EndGame()
+    public void QuitGame()
     {
 #if UNITY_EDITOR
         UnityEditor.EditorApplication.isPlaying = false;
@@ -403,6 +529,7 @@ public class SnowmanGameManager : MonoBehaviour
             SnowGun activeGun = snowGuns[gunIndex % snowGuns.Count];
             if (activeGun != null)
             {
+                Debug.Log($"Firing gun {activeGun.name} at x={activeGun.transform.position.x}");
                 activeGun.Fire();
             }
 
@@ -418,14 +545,75 @@ public class SnowmanGameManager : MonoBehaviour
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
+    private void LoadGameplayScene(StartMode startMode, string playerName)
+    {
+        pendingPlayerName = playerName;
+        pendingStartMode = startMode;
+        SceneManager.LoadScene(GameplaySceneName);
+    }
+
     private void ShowPlayingUi()
     {
-        ShowPanels(false, false, true);
-        PositionHudButtons();
+        HideAllMenuUi();
+
+        if (mainMenuCanvas != null)
+        {
+            mainMenuCanvas.gameObject.SetActive(false);
+        }
+
+        if (pauseCanvas != null)
+        {
+            pauseCanvas.HidePause();
+        }
+
+        if (hudCanvas != null)
+        {
+            hudCanvas.ShowHud(true);
+        }
+        else
+        {
+            ShowPanels(false, false, true);
+            PositionHudButtons();
+        }
+
         Time.timeScale = 1f;
-        pauseButton.interactable = true;
-        restartButton.interactable = true;
-        resumeButton.interactable = false;
+        if (pauseButton != null)
+        {
+            pauseButton.interactable = true;
+        }
+
+        if (restartButton != null)
+        {
+            restartButton.interactable = true;
+        }
+
+        if (resumeButton != null)
+        {
+            resumeButton.interactable = false;
+        }
+    }
+
+    private void HideAllMenuUi()
+    {
+        if (mainMenuCanvas != null)
+        {
+            mainMenuCanvas.gameObject.SetActive(false);
+        }
+
+        if (pauseCanvas != null)
+        {
+            pauseCanvas.HidePause();
+        }
+
+        if (menuPanel != null)
+        {
+            menuPanel.SetActive(false);
+        }
+
+        if (highScorePanel != null)
+        {
+            highScorePanel.SetActive(false);
+        }
     }
 
     private void ShowPanels(bool showMenu, bool showHighScores, bool showHud)
@@ -531,6 +719,11 @@ public class SnowmanGameManager : MonoBehaviour
 
     private void UpdateScoreText()
     {
+        if (hudCanvas != null)
+        {
+            hudCanvas.SetScore(currentScore);
+        }
+
         if (scoreText != null)
         {
             scoreText.text = $"Score: {currentScore:00}";
@@ -539,6 +732,11 @@ public class SnowmanGameManager : MonoBehaviour
 
     private string GetTypedPlayerName()
     {
+        if (mainMenuCanvas != null)
+        {
+            return mainMenuCanvas.PlayerName;
+        }
+
         if (playerNameField == null || string.IsNullOrWhiteSpace(playerNameField.text))
         {
             return "Player";
@@ -550,7 +748,7 @@ public class SnowmanGameManager : MonoBehaviour
     private void BuildRuntimeUi()
     {
         Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        Sprite landingSprite = LoadSpriteFromResources("UI/landingPage");
+        landingBackgroundSprite = LoadSpriteFromResources("UI/landingPage");
         Sprite pauseSprite = LoadSpriteFromResources("UI/pauseBtn");
         Sprite restartSprite = LoadSpriteFromResources("UI/restartBtn");
         Sprite resumeSprite = LoadSpriteFromResources("UI/resumeBtn");
@@ -587,18 +785,20 @@ public class SnowmanGameManager : MonoBehaviour
         StyleIconButton(resumeButton, resumeSprite);
 
         menuPanel = CreatePanel("MenuPanel", canvasObject.transform, Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-        Image menuPanelImage = menuPanel.GetComponent<Image>();
-        menuPanelImage.sprite = landingSprite;
+        menuPanelImage = menuPanel.GetComponent<Image>();
+        menuPanelImage.sprite = landingBackgroundSprite;
         menuPanelImage.preserveAspect = false;
 
-        GameObject buttonGroup = new GameObject("ButtonGroup", typeof(RectTransform));
+        GameObject buttonGroup = new GameObject("ButtonGroup", typeof(RectTransform), typeof(Image), typeof(Outline));
         buttonGroup.transform.SetParent(menuPanel.transform, false);
-        RectTransform buttonGroupRect = buttonGroup.GetComponent<RectTransform>();
+        buttonGroupRect = buttonGroup.GetComponent<RectTransform>();
         buttonGroupRect.anchorMin = new Vector2(0.5f, 0.5f);
         buttonGroupRect.anchorMax = new Vector2(0.5f, 0.5f);
         buttonGroupRect.pivot = new Vector2(0.5f, 0.5f);
         buttonGroupRect.sizeDelta = new Vector2(260f, 330f);
         buttonGroupRect.anchoredPosition = new Vector2(0f, -10f);
+        buttonGroupImage = buttonGroup.GetComponent<Image>();
+        buttonGroupOutline = buttonGroup.GetComponent<Outline>();
 
         menuTitleText = CreateText("MenuTitle", buttonGroup.transform, font, string.Empty, 24, TextAnchor.MiddleCenter, Color.black);
         menuTitleText.rectTransform.anchoredPosition = new Vector2(0f, 168f);
@@ -607,10 +807,10 @@ public class SnowmanGameManager : MonoBehaviour
         playerNameField = CreateInputField(buttonGroup.transform, font, new Vector2(0f, 110f), new Vector2(250f, 44f));
         playerNameField.text = "Player";
 
-        Button newGameButton = CreateButton("NewGameButton", buttonGroup.transform, font, "New Game", new Vector2(0f, 42f), new Vector2(210f, 42f), StartNewGame);
-        saveGameButton = CreateButton("SaveGameButton", buttonGroup.transform, font, "Saved Game", new Vector2(0f, -14f), new Vector2(210f, 42f), ResumeSavedGame);
-        Button highScoresButton = CreateButton("HighScoreButton", buttonGroup.transform, font, "High Scores", new Vector2(0f, -70f), new Vector2(210f, 42f), ShowHighScores);
-        Button exitButton = CreateButton("EndGameButton", buttonGroup.transform, font, "Exit", new Vector2(0f, -126f), new Vector2(210f, 42f), EndGame);
+        newGameButton = CreateButton("NewGameButton", buttonGroup.transform, font, "New Game", new Vector2(0f, 42f), new Vector2(210f, 42f), StartNewGame);
+        saveGameButton = CreateButton("SaveGameButton", buttonGroup.transform, font, "Saved Game", new Vector2(0f, -14f), new Vector2(210f, 42f), LoadSavedGame);
+        highScoresButton = CreateButton("HighScoreButton", buttonGroup.transform, font, "High Scores", new Vector2(0f, -70f), new Vector2(210f, 42f), ShowHighScores);
+        exitButton = CreateButton("EndGameButton", buttonGroup.transform, font, "Exit", new Vector2(0f, -126f), new Vector2(210f, 42f), QuitGame);
         StyleLandingButton(newGameButton);
         StyleLandingButton(saveGameButton);
         StyleLandingButton(highScoresButton);
@@ -622,6 +822,7 @@ public class SnowmanGameManager : MonoBehaviour
         highScoreText.rectTransform.anchorMax = new Vector2(1f, 1f);
         highScoreText.rectTransform.offsetMin = new Vector2(14f, 10f);
         highScoreText.rectTransform.offsetMax = new Vector2(-14f, -10f);
+        SetLandingMenuLook();
     }
 
     private void CreateEventSystem()
@@ -751,6 +952,11 @@ public class SnowmanGameManager : MonoBehaviour
 
     private void PositionHudButtons()
     {
+        if (resumeButton == null || pauseButton == null || restartButton == null)
+        {
+            return;
+        }
+
         RectTransform resumeRect = resumeButton.GetComponent<RectTransform>();
         RectTransform pauseRect = pauseButton.GetComponent<RectTransform>();
         RectTransform restartRect = restartButton.GetComponent<RectTransform>();
@@ -786,7 +992,17 @@ public class SnowmanGameManager : MonoBehaviour
 
     private static void StyleIconButton(Button button, Sprite sprite)
     {
+        if (button == null)
+        {
+            return;
+        }
+
         Image image = button.GetComponent<Image>();
+        if (image == null)
+        {
+            return;
+        }
+
         image.color = Color.white;
         image.sprite = sprite;
         image.type = Image.Type.Simple;
@@ -829,5 +1045,123 @@ public class SnowmanGameManager : MonoBehaviour
             new Rect(0f, 0f, texture.width, texture.height),
             new Vector2(0.5f, 0.5f),
             100f);
+    }
+
+    private void ApplyHudButtonIcons()
+    {
+        Sprite pauseSprite = LoadSpriteFromResources("UI/pauseBtn");
+        Sprite restartSprite = LoadSpriteFromResources("UI/restartBtn");
+        Sprite resumeSprite = LoadSpriteFromResources("UI/resumeBtn");
+
+        StyleIconButton(pauseButton, pauseSprite);
+        StyleIconButton(restartButton, restartSprite);
+        StyleIconButton(resumeButton, resumeSprite);
+    }
+
+    private void SetLandingMenuLook()
+    {
+        if (menuPanelImage != null)
+        {
+            menuPanelImage.sprite = landingBackgroundSprite;
+            menuPanelImage.color = Color.white;
+            menuPanelImage.raycastTarget = true;
+        }
+
+        if (buttonGroupImage != null)
+        {
+            buttonGroupImage.color = new Color(1f, 1f, 1f, 0f);
+            buttonGroupImage.raycastTarget = false;
+        }
+
+        if (buttonGroupOutline != null)
+        {
+            buttonGroupOutline.effectColor = new Color(0f, 0f, 0f, 0f);
+            buttonGroupOutline.effectDistance = Vector2.zero;
+        }
+
+        if (buttonGroupRect != null)
+        {
+            buttonGroupRect.sizeDelta = new Vector2(260f, 330f);
+            buttonGroupRect.anchoredPosition = new Vector2(0f, -10f);
+        }
+
+        if (menuTitleText != null)
+        {
+            menuTitleText.rectTransform.anchoredPosition = new Vector2(0f, 168f);
+        }
+
+        if (playerNameField != null)
+        {
+            playerNameField.gameObject.SetActive(true);
+            playerNameField.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 110f);
+        }
+
+        SetMenuButtonPosition(newGameButton, 42f);
+        SetMenuButtonPosition(saveGameButton, -14f);
+        SetMenuButtonPosition(highScoresButton, -70f);
+        SetMenuButtonPosition(exitButton, -126f);
+
+        if (highScorePanel != null)
+        {
+            highScorePanel.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -248f);
+        }
+    }
+
+    private void SetOverlayMenuLook()
+    {
+        if (menuPanelImage != null)
+        {
+            menuPanelImage.sprite = null;
+            menuPanelImage.color = new Color(0f, 0f, 0f, 0f);
+            menuPanelImage.raycastTarget = false;
+        }
+
+        if (buttonGroupImage != null)
+        {
+            buttonGroupImage.color = new Color(1f, 1f, 1f, 0.92f);
+            buttonGroupImage.raycastTarget = true;
+        }
+
+        if (buttonGroupOutline != null)
+        {
+            buttonGroupOutline.effectColor = Color.black;
+            buttonGroupOutline.effectDistance = new Vector2(2f, -2f);
+        }
+
+        if (buttonGroupRect != null)
+        {
+            buttonGroupRect.sizeDelta = new Vector2(280f, 300f);
+            buttonGroupRect.anchoredPosition = new Vector2(0f, 8f);
+        }
+
+        if (menuTitleText != null)
+        {
+            menuTitleText.rectTransform.anchoredPosition = new Vector2(0f, 124f);
+        }
+
+        if (playerNameField != null)
+        {
+            playerNameField.gameObject.SetActive(false);
+        }
+
+        SetMenuButtonPosition(newGameButton, 48f);
+        SetMenuButtonPosition(saveGameButton, -4f);
+        SetMenuButtonPosition(highScoresButton, -56f);
+        SetMenuButtonPosition(exitButton, -108f);
+
+        if (highScorePanel != null)
+        {
+            highScorePanel.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -228f);
+        }
+    }
+
+    private static void SetMenuButtonPosition(Button button, float yPosition)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        button.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, yPosition);
     }
 }
