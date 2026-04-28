@@ -58,7 +58,8 @@ public class SnowmanGameManager : MonoBehaviour
 
     private static StartMode pendingStartMode = StartMode.Landing;
     private static string pendingPlayerName = "Player";
-    private const float GunWaitTime = 20f;
+    private const float MinGunWaitTime = 2.5f;
+    private const float MaxGunWaitTime = 6f;
 
     private readonly List<SnowGun> snowGuns = new List<SnowGun>();
     private ScoreHistory scoreHistory = new ScoreHistory();
@@ -66,6 +67,7 @@ public class SnowmanGameManager : MonoBehaviour
     private BalloonManager balloonManager;
     private PurlyMovement purly;
     private Coroutine gunRoutine;
+    private SnowGun lastFiredGun;
     private GameState currentState = GameState.Landing;
     private string currentPlayerName = "Player";
     private int currentScore;
@@ -174,14 +176,24 @@ public class SnowmanGameManager : MonoBehaviour
 
     public void HandlePurlyHit(PurlyMovement hitPurly)
     {
+        HandlePurlyDeath(hitPurly, "Purly Was Hit");
+    }
+
+    public void HandlePurlyMelted(PurlyMovement meltedPurly)
+    {
+        HandlePurlyDeath(meltedPurly, "Purly Melted");
+    }
+
+    private void HandlePurlyDeath(PurlyMovement purlyToDestroy, string gameOverMessage)
+    {
         if (currentState != GameState.Playing)
         {
             return;
         }
 
-        if (hitPurly != null)
+        if (purlyToDestroy != null)
         {
-            Destroy(hitPurly.gameObject);
+            Destroy(purlyToDestroy.gameObject);
         }
 
         SaveFinishedScore();
@@ -192,13 +204,13 @@ public class SnowmanGameManager : MonoBehaviour
 
         if (pauseCanvas != null)
         {
-            pauseCanvas.ShowPause("Purly Was Hit");
+            pauseCanvas.ShowPause(gameOverMessage);
             pauseCanvas.PrepareHighScores(BuildHighScoreText());
         }
         else
         {
             SetOverlayMenuLook();
-            menuTitleText.text = "Purly Was Hit";
+            menuTitleText.text = gameOverMessage;
             menuPanel.SetActive(true);
             highScorePanel.SetActive(false);
             hudPanel.SetActive(true);
@@ -242,6 +254,7 @@ public class SnowmanGameManager : MonoBehaviour
     private void UpdateSceneReferences()
     {
         snowGuns.Clear();
+        lastFiredGun = null;
         mainMenuCanvas = FindFirstObjectByType<MainMenuCanvas>(FindObjectsInactive.Include);
         pauseCanvas = FindFirstObjectByType<PauseCanvas>(FindObjectsInactive.Include);
         hudCanvas = FindFirstObjectByType<HudCanvas>(FindObjectsInactive.Include);
@@ -284,6 +297,8 @@ public class SnowmanGameManager : MonoBehaviour
         {
             RegisterBalloon(sceneBalloons[i]);
         }
+
+        WaterfallHazardTilemap.AddHazardsToCurrentScene();
     }
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -516,8 +531,6 @@ public class SnowmanGameManager : MonoBehaviour
 
     private IEnumerator GunLoop()
     {
-        int gunIndex = 0;
-
         while (currentState == GameState.Playing)
         {
             if (snowGuns.Count == 0)
@@ -526,16 +539,44 @@ public class SnowmanGameManager : MonoBehaviour
                 continue;
             }
 
-            SnowGun activeGun = snowGuns[gunIndex % snowGuns.Count];
+            SnowGun activeGun = GetRandomGunThatDidNotFireLast();
             if (activeGun != null)
             {
                 Debug.Log($"Firing gun {activeGun.name} at x={activeGun.transform.position.x}");
-                activeGun.Fire();
+                activeGun.FireAt(purly != null ? purly.transform : null);
+                lastFiredGun = activeGun;
             }
 
-            gunIndex++;
-            yield return new WaitForSeconds(GunWaitTime);
+            yield return new WaitForSeconds(UnityEngine.Random.Range(MinGunWaitTime, MaxGunWaitTime));
         }
+    }
+
+    private SnowGun GetRandomGunThatDidNotFireLast()
+    {
+        if (snowGuns.Count == 1)
+        {
+            return snowGuns[0];
+        }
+
+        SnowGun selectedGun = null;
+        for (int attempts = 0; attempts < 12; attempts++)
+        {
+            selectedGun = snowGuns[UnityEngine.Random.Range(0, snowGuns.Count)];
+            if (selectedGun != null && selectedGun != lastFiredGun)
+            {
+                return selectedGun;
+            }
+        }
+
+        for (int i = 0; i < snowGuns.Count; i++)
+        {
+            if (snowGuns[i] != null && snowGuns[i] != lastFiredGun)
+            {
+                return snowGuns[i];
+            }
+        }
+
+        return selectedGun;
     }
 
     private void ReloadCurrentScene(StartMode startMode, string playerName)

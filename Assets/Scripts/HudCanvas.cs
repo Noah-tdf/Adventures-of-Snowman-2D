@@ -13,6 +13,23 @@ public class HudCanvas : MonoBehaviour
     public Button RestartButton => restartButton;
     public Button ResumeButton => resumeButton;
 
+    private void Awake()
+    {
+        if (scoreText == null)
+        {
+            return;
+        }
+
+        Outline outline = scoreText.GetComponent<Outline>();
+        if (outline == null)
+        {
+            outline = scoreText.gameObject.AddComponent<Outline>();
+        }
+
+        outline.effectColor = Color.white;
+        outline.effectDistance = new Vector2(1.5f, -1.5f);
+    }
+
     public void ShowHud(bool isVisible)
     {
         if (hudPanel != null)

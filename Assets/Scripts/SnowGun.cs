@@ -3,12 +3,15 @@ using UnityEngine;
 public class SnowGun : MonoBehaviour
 {
     [SerializeField] private Transform firePoint;
-    [SerializeField] private float snowballSpeed = 7f;
-    [SerializeField] private float upwardDirectionRange = 0.05f;
-    [SerializeField] private float downwardDirectionRange = 0.28f;
-    [SerializeField] private float verticalSpawnOffset = -1.6f;
-    [SerializeField] private float forwardSpawnOffset = 0.95f;
-    [SerializeField] private float extraVerticalTravelOffset = 0.75f;
+    [SerializeField] private float minSnowballSpeed = 5f;
+    [SerializeField] private float maxSnowballSpeed = 10f;
+    [SerializeField] private Vector2 targetRandomOffset = new Vector2(0.75f, 1.2f);
+    [SerializeField] private float verticalSpawnOffset = -1.45f;
+    [SerializeField] private float forwardSpawnOffset = 0.65f;
+    [SerializeField] private float minTargetY = -1.25f;
+    [SerializeField] private float maxTargetY = 1.35f;
+    [SerializeField] private float middleShotChance = 0.8f;
+    [SerializeField] private float maxUpwardAim = -0.15f;
     private static Sprite snowballSprite;
 
     private void Start()
@@ -23,13 +26,15 @@ public class SnowGun : MonoBehaviour
 
     public void Fire()
     {
-        Vector2 direction = GetRandomStraightDirection();
-        Vector3 basePosition = transform.position;
-        basePosition.y += verticalSpawnOffset;
-        Vector3 spawnPosition = basePosition + new Vector3(
-            direction.x * forwardSpawnOffset,
-            direction.y * extraVerticalTravelOffset,
-            0f);
+        FireAt(null);
+    }
+
+    public void FireAt(Transform target)
+    {
+        Vector3 spawnPosition = GetSpawnPosition();
+        Vector2 direction = GetDirectionTowardTarget(spawnPosition, target);
+        float snowballSpeed = Random.Range(minSnowballSpeed, maxSnowballSpeed);
+
         spawnPosition.z = 0f;
         GameObject snowball = CreateSimpleSnowball(spawnPosition);
         Snowball snowballScript = snowball.GetComponent<Snowball>();
@@ -42,11 +47,58 @@ public class SnowGun : MonoBehaviour
         Debug.Log($"Snowball spawned from {name} at {spawnPosition} with direction {direction} and speed {snowballSpeed}");
     }
 
-    private Vector2 GetRandomStraightDirection()
+    private Vector3 GetSpawnPosition()
     {
-        float horizontalDirection = transform.position.x < 0f ? 1f : -1f;
-        float randomVertical = Random.Range(-downwardDirectionRange, upwardDirectionRange);
-        return new Vector2(horizontalDirection, randomVertical).normalized;
+        float horizontalDirection = GetHorizontalDirection();
+        Vector3 basePosition = firePoint != null ? firePoint.position : transform.position;
+        basePosition.y += verticalSpawnOffset;
+        basePosition.x += horizontalDirection * forwardSpawnOffset;
+        return basePosition;
+    }
+
+    private Vector2 GetDirectionTowardTarget(Vector3 spawnPosition, Transform target)
+    {
+        float horizontalDirection = GetHorizontalDirection();
+        Vector3 targetPosition;
+
+        if (target != null && Random.value > middleShotChance)
+        {
+            // Aim near Purly, not exactly at the same point every time.
+            targetPosition = target.position + new Vector3(
+                Random.Range(-targetRandomOffset.x, targetRandomOffset.x),
+                Random.Range(-targetRandomOffset.y, targetRandomOffset.y),
+                0f);
+        }
+        else
+        {
+            // Most shots cross the playable middle area, which keeps them out of the top wall.
+            targetPosition = spawnPosition + new Vector3(
+                horizontalDirection * Random.Range(7f, 13f),
+                Random.Range(minTargetY, maxTargetY) - spawnPosition.y,
+                0f);
+        }
+
+        Vector2 direction = targetPosition - spawnPosition;
+
+        // Snow guns sit in the upper corners, so do not allow upward/top-wall shots.
+        // This keeps snowballs from scraping along the top wall.
+        if (direction.y > maxUpwardAim)
+        {
+            direction.y = maxUpwardAim;
+        }
+
+        if (Mathf.Abs(direction.x) < 0.1f)
+        {
+            direction.x = horizontalDirection;
+        }
+
+        direction.x = Mathf.Abs(direction.x) * horizontalDirection;
+        return direction.normalized;
+    }
+
+    private float GetHorizontalDirection()
+    {
+        return transform.position.x < 0f ? 1f : -1f;
     }
 
     private GameObject CreateSimpleSnowball(Vector3 spawnPosition)
@@ -58,7 +110,7 @@ public class SnowGun : MonoBehaviour
 
         CircleCollider2D collider2D = snowball.AddComponent<CircleCollider2D>();
         collider2D.radius = 0.22f;
-        collider2D.isTrigger = false;
+        collider2D.isTrigger = true;
 
         Rigidbody2D rigidBody2D = snowball.AddComponent<Rigidbody2D>();
         rigidBody2D.gravityScale = 0f;
@@ -68,7 +120,7 @@ public class SnowGun : MonoBehaviour
         SpriteRenderer spriteRenderer = snowball.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = GetSnowballSprite();
         spriteRenderer.color = Color.white;
-        spriteRenderer.sortingOrder = 220;
+        spriteRenderer.sortingOrder = 500;
         snowball.transform.localScale = new Vector3(0.42f, 0.42f, 1f);
 
         TrailRenderer trailRenderer = snowball.AddComponent<TrailRenderer>();
@@ -78,7 +130,7 @@ public class SnowGun : MonoBehaviour
         trailRenderer.material = new Material(Shader.Find("Sprites/Default"));
         trailRenderer.startColor = new Color(1f, 1f, 1f, 0.95f);
         trailRenderer.endColor = new Color(1f, 1f, 1f, 0f);
-        trailRenderer.sortingOrder = 219;
+        trailRenderer.sortingOrder = 499;
 
         snowball.AddComponent<Snowball>();
         return snowball;

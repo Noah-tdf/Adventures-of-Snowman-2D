@@ -12,29 +12,29 @@ public enum BalloonWall
 
 public class BalloonManager : MonoBehaviour
 {
+    // Each zone is xMin, xMax, yMin, yMax in world space.
+    // The zones sit above the rock/platform tops so balloons do not appear under the rocks.
+    private static readonly Vector4[] SafePlatformSpawnZones =
+    {
+        new Vector4(-4.85f, -4.05f, 1.25f, 2.05f),
+        new Vector4(-1.55f, -0.75f, 0.55f, 1.25f),
+        new Vector4(0.95f, 2.25f, 0.55f, 1.3f),
+        new Vector4(2.85f, 4.2f, 0.55f, 1.35f),
+        new Vector4(6.25f, 7.35f, 2.1f, 2.85f),
+        new Vector4(7.9f, 8.8f, 0.55f, 1.35f)
+    };
+
     private readonly List<Balloon> balloons = new List<Balloon>();
-    private bool wallsAssigned;
-    private float leftWallX;
-    private float rightWallX;
-    private float topWallY;
-    private float bottomWallY;
-    private float minX;
-    private float maxX;
-    private float minY;
-    private float maxY;
+    private readonly Dictionary<Balloon, int> occupiedSpawnZones = new Dictionary<Balloon, int>();
+    private bool spawnZonesReady;
+    private int lastSpawnZoneIndex = -1;
 
     public void ResetBalloons()
     {
         balloons.Clear();
-        wallsAssigned = false;
-        leftWallX = 0f;
-        rightWallX = 0f;
-        topWallY = 0f;
-        bottomWallY = 0f;
-        minX = 0f;
-        maxX = 0f;
-        minY = 0f;
-        maxY = 0f;
+        occupiedSpawnZones.Clear();
+        spawnZonesReady = false;
+        lastSpawnZoneIndex = -1;
     }
 
     public void RegisterBalloon(Balloon balloon)
@@ -46,20 +46,22 @@ public class BalloonManager : MonoBehaviour
 
         balloons.Add(balloon);
 
-        if (balloons.Count >= 4 && !wallsAssigned)
+        if (balloons.Count >= 4 && !spawnZonesReady)
         {
-            AssignWallsFromStartingPositions();
+            spawnZonesReady = true;
+            MoveAllBalloonsToSpawnZones();
         }
     }
 
     public void HandleBalloonPopped(Balloon balloon)
     {
-        if (balloon == null || !wallsAssigned)
+        if (balloon == null || !spawnZonesReady)
         {
             return;
         }
 
         balloon.Hide();
+        occupiedSpawnZones.Remove(balloon);
         StartCoroutine(RespawnBalloon(balloon));
     }
 
@@ -72,100 +74,124 @@ public class BalloonManager : MonoBehaviour
             yield break;
         }
 
-        Vector3 respawnPosition = GetRandomWallPosition(balloon.WallSide);
-        balloon.SetLocalPosition(respawnPosition);
+        int spawnZoneIndex = GetRandomAvailableSpawnZoneIndex(balloon);
+        Vector3 respawnPosition = GetRandomPositionInsideZone(spawnZoneIndex);
+        occupiedSpawnZones[balloon] = spawnZoneIndex;
+        SetBalloonWorldPosition(balloon, respawnPosition);
         balloon.Show();
-        Debug.Log($"Balloon respawned on {balloon.WallSide} wall at {respawnPosition}");
+        Debug.Log($"Balloon respawned on platform at {respawnPosition}");
     }
 
-    private void AssignWallsFromStartingPositions()
+    private void MoveAllBalloonsToSpawnZones()
     {
-        List<Balloon> remainingBalloons = new List<Balloon>(balloons);
-        Balloon topBalloon = remainingBalloons[0];
-        Balloon bottomBalloon = remainingBalloons[0];
-
-        for (int i = 1; i < remainingBalloons.Count; i++)
+        List<int> availableSpawnZoneIndexes = new List<int>();
+        for (int i = 0; i < SafePlatformSpawnZones.Length; i++)
         {
-            Vector3 position = remainingBalloons[i].GetLocalPosition();
+            availableSpawnZoneIndexes.Add(i);
+        }
 
-            if (position.y > topBalloon.GetLocalPosition().y)
+        for (int i = 0; i < balloons.Count; i++)
+        {
+            int spawnZoneIndex;
+
+            if (availableSpawnZoneIndexes.Count > 0)
             {
-                topBalloon = remainingBalloons[i];
+                int availableIndex = Random.Range(0, availableSpawnZoneIndexes.Count);
+                spawnZoneIndex = availableSpawnZoneIndexes[availableIndex];
+                availableSpawnZoneIndexes.RemoveAt(availableIndex);
+            }
+            else
+            {
+                spawnZoneIndex = Random.Range(0, SafePlatformSpawnZones.Length);
             }
 
-            if (position.y < bottomBalloon.GetLocalPosition().y)
+            SetBalloonWorldPosition(balloons[i], GetRandomPositionInsideZone(spawnZoneIndex));
+            occupiedSpawnZones[balloons[i]] = spawnZoneIndex;
+            balloons[i].Show();
+        }
+    }
+
+    private int GetRandomAvailableSpawnZoneIndex(Balloon balloonToPlace)
+    {
+        List<int> availableSpawnZoneIndexes = new List<int>();
+        for (int i = 0; i < SafePlatformSpawnZones.Length; i++)
+        {
+            if (!IsSpawnZoneOccupiedByAnotherBalloon(i, balloonToPlace))
             {
-                bottomBalloon = remainingBalloons[i];
+                availableSpawnZoneIndexes.Add(i);
             }
         }
 
-        remainingBalloons.Remove(topBalloon);
-        if (bottomBalloon != topBalloon)
+        if (availableSpawnZoneIndexes.Count > 0)
         {
-            remainingBalloons.Remove(bottomBalloon);
+            int availableIndex = Random.Range(0, availableSpawnZoneIndexes.Count);
+            int selectedZone = availableSpawnZoneIndexes[availableIndex];
+            lastSpawnZoneIndex = selectedZone;
+            return selectedZone;
         }
 
-        Balloon leftBalloon;
-        Balloon rightBalloon;
+        return GetRandomSpawnZoneIndex();
+    }
 
-        if (remainingBalloons.Count >= 2)
+    private int GetRandomSpawnZoneIndex()
+    {
+        int spawnZoneIndex = Random.Range(0, SafePlatformSpawnZones.Length);
+
+        if (SafePlatformSpawnZones.Length > 1)
         {
-            leftBalloon = remainingBalloons[0].GetLocalPosition().x <= remainingBalloons[1].GetLocalPosition().x
-                ? remainingBalloons[0]
-                : remainingBalloons[1];
-            rightBalloon = leftBalloon == remainingBalloons[0] ? remainingBalloons[1] : remainingBalloons[0];
+            int attempts = 0;
+            while (spawnZoneIndex == lastSpawnZoneIndex && attempts < 8)
+            {
+                spawnZoneIndex = Random.Range(0, SafePlatformSpawnZones.Length);
+                attempts++;
+            }
+        }
+
+        lastSpawnZoneIndex = spawnZoneIndex;
+        return spawnZoneIndex;
+    }
+
+    private bool IsSpawnZoneOccupiedByAnotherBalloon(int spawnZoneIndex, Balloon balloonToPlace)
+    {
+        foreach (KeyValuePair<Balloon, int> occupiedSpawnZone in occupiedSpawnZones)
+        {
+            if (occupiedSpawnZone.Key == null || occupiedSpawnZone.Key == balloonToPlace)
+            {
+                continue;
+            }
+
+            if (occupiedSpawnZone.Value == spawnZoneIndex)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Vector3 GetRandomPositionInsideZone(int spawnZoneIndex)
+    {
+        Vector4 zone = SafePlatformSpawnZones[spawnZoneIndex];
+        return new Vector3(
+            Random.Range(zone.x, zone.y),
+            Random.Range(zone.z, zone.w),
+            -5f);
+    }
+
+    private static void SetBalloonWorldPosition(Balloon balloon, Vector3 worldPosition)
+    {
+        if (balloon == null)
+        {
+            return;
+        }
+
+        if (balloon.transform.parent != null)
+        {
+            balloon.SetLocalPosition(balloon.transform.parent.InverseTransformPoint(worldPosition));
         }
         else
         {
-            leftBalloon = balloons[0];
-            rightBalloon = balloons[0];
-
-            for (int i = 0; i < balloons.Count; i++)
-            {
-                if (balloons[i].GetLocalPosition().x < leftBalloon.GetLocalPosition().x)
-                {
-                    leftBalloon = balloons[i];
-                }
-
-                if (balloons[i].GetLocalPosition().x > rightBalloon.GetLocalPosition().x)
-                {
-                    rightBalloon = balloons[i];
-                }
-            }
-        }
-
-        topBalloon.AssignWall(BalloonWall.Top);
-        bottomBalloon.AssignWall(BalloonWall.Bottom);
-        leftBalloon.AssignWall(BalloonWall.Left);
-        rightBalloon.AssignWall(BalloonWall.Right);
-
-        topWallY = topBalloon.GetLocalPosition().y;
-        bottomWallY = bottomBalloon.GetLocalPosition().y;
-        leftWallX = leftBalloon.GetLocalPosition().x;
-        rightWallX = rightBalloon.GetLocalPosition().x;
-
-        minX = leftWallX;
-        maxX = rightWallX;
-        minY = bottomWallY;
-        maxY = topWallY;
-        wallsAssigned = true;
-    }
-
-    private Vector3 GetRandomWallPosition(BalloonWall wall)
-    {
-        const float horizontalPadding = 1.5f;
-        const float verticalPadding = 1.25f;
-
-        switch (wall)
-        {
-            case BalloonWall.Left:
-                return new Vector3(leftWallX, Random.Range(minY + verticalPadding, maxY - verticalPadding), -5f);
-            case BalloonWall.Right:
-                return new Vector3(rightWallX, Random.Range(minY + verticalPadding, maxY - verticalPadding), -5f);
-            case BalloonWall.Top:
-                return new Vector3(Random.Range(minX + horizontalPadding, maxX - horizontalPadding), topWallY, -5f);
-            default:
-                return new Vector3(Random.Range(minX + horizontalPadding, maxX - horizontalPadding), bottomWallY, -5f);
+            balloon.transform.position = worldPosition;
         }
     }
 }

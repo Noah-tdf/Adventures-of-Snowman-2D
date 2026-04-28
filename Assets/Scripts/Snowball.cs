@@ -34,7 +34,17 @@ public class Snowball : MonoBehaviour
 
     private void OnCollisionEnter2D(Collision2D collision)
     {
-        PurlyMovement purly = collision.collider.GetComponentInParent<PurlyMovement>();
+        TryHitPurly(collision.collider);
+    }
+
+    private void OnTriggerEnter2D(Collider2D other)
+    {
+        TryHitPurly(other);
+    }
+
+    private void TryHitPurly(Collider2D other)
+    {
+        PurlyMovement purly = other.GetComponentInParent<PurlyMovement>();
 
         if (purly != null && SnowmanGameManager.Instance != null)
         {
@@ -43,11 +53,6 @@ public class Snowball : MonoBehaviour
             return;
         }
 
-        if (Time.time - spawnTime < 0.25f)
-        {
-            return;
-        }
-
-        Destroy(gameObject);
+        // Snowballs are trigger hitboxes, so walls and tilemaps should not stop them.
     }
 }
