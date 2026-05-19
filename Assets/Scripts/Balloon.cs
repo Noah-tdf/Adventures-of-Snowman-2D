@@ -2,10 +2,17 @@ using UnityEngine;
 
 public class Balloon : MonoBehaviour
 {
+    [SerializeField] private int scoreValue = 1;
     private SpriteRenderer spriteRenderer;
     private CircleCollider2D circleCollider2D;
     private bool isAvailable = true;
 
+    public void SetScoreValue(int value)
+    {
+        scoreValue = value;
+    }
+
+    public int ScoreValue => scoreValue;
     public BalloonWall WallSide { get; private set; }
 
     private void Awake()

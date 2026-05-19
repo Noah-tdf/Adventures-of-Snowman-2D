@@ -1,7 +1,6 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using UnityEngine.Tilemaps;
 
 // ============================================================
 // Regular Kill Zone
@@ -10,212 +9,51 @@ using UnityEngine.Tilemaps;
 // the platform. When Purly touches this trigger, the game ends.
 public class KillZone : MonoBehaviour
 {
+    [Header("Visual Feedback")]
+    [SerializeField] private Color debugColor = new Color(1f, 0f, 0f, 0.4f);
+
     private void OnTriggerEnter2D(Collider2D other)
     {
         PurlyMovement purly = other.GetComponent<PurlyMovement>();
-        if (purly != null)
-        {
-            SnowmanGameManager.Instance.HandlePurlyHit(purly);
-        }
-    }
-}
-
-// ============================================================
-// Waterfall Tilemap Hazard
-// ============================================================
-// This scans Tilemaps for waterfall/water tiles and checks whether
-// Purly overlaps those tile areas. If she does, she melts.
-public class WaterfallHazardTilemap : MonoBehaviour
-{
-    private readonly HashSet<Vector3Int> waterfallCells = new HashSet<Vector3Int>();
-    private readonly List<Bounds> waterfallWorldBounds = new List<Bounds>();
-    private Tilemap tilemap;
-    private PurlyMovement purly;
-    private Collider2D purlyCollider;
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void InstallWaterfallHazards()
-    {
-        SceneManager.sceneLoaded -= OnSceneLoaded;
-        SceneManager.sceneLoaded += OnSceneLoaded;
-        AddHazardsToCurrentScene();
-    }
-
-    private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-    {
-        AddHazardsToCurrentScene();
-    }
-
-    public static void AddHazardsToCurrentScene()
-    {
-        Tilemap[] tilemaps = FindObjectsByType<Tilemap>(FindObjectsSortMode.None);
-        for (int i = 0; i < tilemaps.Length; i++)
-        {
-            Tilemap foundTilemap = tilemaps[i];
-            if (foundTilemap == null || foundTilemap.GetComponent<WaterfallHazardTilemap>() != null)
-            {
-                continue;
-            }
-
-            if (ContainsWaterfallTile(foundTilemap))
-            {
-                foundTilemap.gameObject.AddComponent<WaterfallHazardTilemap>();
-            }
-        }
-
-        EnsureKnownWaterfallVolume();
-    }
-
-    private static void EnsureKnownWaterfallVolume()
-    {
-        if (GameObject.Find("Waterfall Hazard Volume") != null)
-        {
-            return;
-        }
-
-        GameObject hazard = new GameObject("Waterfall Hazard Volume");
-        hazard.transform.position = new Vector3(6.58f, -3.8f, 0f);
-
-        BoxCollider2D collider = hazard.AddComponent<BoxCollider2D>();
-        collider.isTrigger = true;
-        collider.size = new Vector2(2.9f, 6.4f);
-
-        hazard.AddComponent<WaterfallHazardVolume>();
-    }
-
-    private static bool ContainsWaterfallTile(Tilemap tilemapToCheck)
-    {
-        BoundsInt bounds = tilemapToCheck.cellBounds;
-        foreach (Vector3Int cell in bounds.allPositionsWithin)
-        {
-            if (IsWaterfallTile(tilemapToCheck, cell))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private void Awake()
-    {
-        tilemap = GetComponent<Tilemap>();
-        CacheWaterfallCells();
-    }
-
-    private void Update()
-    {
-        if (tilemap == null || waterfallCells.Count == 0)
-        {
-            return;
-        }
-
         if (purly == null)
         {
-            purly = FindFirstObjectByType<PurlyMovement>();
-            purlyCollider = purly != null ? purly.GetComponent<Collider2D>() : null;
+            purly = other.GetComponentInParent<PurlyMovement>();
         }
 
-        if (purly == null || purlyCollider == null)
+        if (purly != null)
         {
-            return;
-        }
-
-        Bounds purlyBounds = purlyCollider.bounds;
-        for (int i = 0; i < waterfallWorldBounds.Count; i++)
-        {
-            if (!purlyBounds.Intersects(waterfallWorldBounds[i]))
-            {
-                continue;
-            }
-
             if (SnowmanGameManager.Instance != null)
             {
-                SnowmanGameManager.Instance.HandlePurlyMelted(purly);
-                enabled = false;
-            }
-
-            return;
-        }
-    }
-
-    private void CacheWaterfallCells()
-    {
-        waterfallCells.Clear();
-        waterfallWorldBounds.Clear();
-
-        if (tilemap == null)
-        {
-            return;
-        }
-
-        BoundsInt bounds = tilemap.cellBounds;
-        foreach (Vector3Int cell in bounds.allPositionsWithin)
-        {
-            if (IsWaterfallTile(tilemap, cell))
-            {
-                waterfallCells.Add(cell);
-                waterfallWorldBounds.Add(GetVisibleWaterfallBounds(cell));
+                SnowmanGameManager.Instance.HandlePurlyHit(purly);
             }
         }
     }
 
-    private Bounds GetVisibleWaterfallBounds(Vector3Int cell)
+    private void OnDrawGizmos()
     {
-        Sprite sprite = tilemap.GetSprite(cell);
-        Vector3 center = tilemap.GetCellCenterWorld(cell);
-
-        if (sprite == null)
+        BoxCollider2D boxCollider = GetComponent<BoxCollider2D>();
+        if (boxCollider != null)
         {
-            return new Bounds(center, tilemap.cellSize);
+            Gizmos.color = debugColor;
+            Gizmos.matrix = transform.localToWorldMatrix;
+            Gizmos.DrawCube(boxCollider.offset, boxCollider.size);
+            Gizmos.color = new Color(debugColor.r, debugColor.g, debugColor.b, 1.0f);
+            Gizmos.DrawWireCube(boxCollider.offset, boxCollider.size);
         }
-
-        Vector3 size = sprite.bounds.size;
-        size.x = Mathf.Max(size.x, tilemap.cellSize.x);
-        size.y = Mathf.Max(size.y, tilemap.cellSize.y);
-
-        Bounds bounds = new Bounds(center, size);
-        bounds.Expand(0.1f);
-        return bounds;
-    }
-
-    private static bool IsWaterfallTile(Tilemap sourceTilemap, Vector3Int cell)
-    {
-        TileBase tile = sourceTilemap.GetTile(cell);
-        if (tile == null)
-        {
-            return false;
-        }
-
-        if (NameLooksLikeWaterfall(tile.name))
-        {
-            return true;
-        }
-
-        Sprite sprite = sourceTilemap.GetSprite(cell);
-        return sprite != null && NameLooksLikeWaterfall(sprite.name);
-    }
-
-    private static bool NameLooksLikeWaterfall(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        string lower = value.ToLowerInvariant();
-        return lower.Contains("waterfall") || lower.Contains("water fall") || lower.Contains("water");
     }
 }
 
 // ============================================================
-// Waterfall Backup Trigger Volume
+// Waterfall Hazard Volume (Manual Object)
 // ============================================================
-// This is a hidden backup kill zone placed over the waterfall column.
-// It also checks overlap every frame, so Purly still melts even if
-// Unity trigger callbacks miss the collision.
+// Attach this script to an empty GameObject with a BoxCollider2D (IsTrigger = true).
+// This allows you to manually place, move, and resize waterfall death zones.
+[RequireComponent(typeof(BoxCollider2D))]
 public class WaterfallHazardVolume : MonoBehaviour
 {
+    [Header("Visual Feedback")]
+    [SerializeField] private Color hazardColor = new Color(0f, 0.5f, 1f, 0.4f);
+
     private BoxCollider2D boxCollider;
     private PurlyMovement purly;
     private Collider2D purlyCollider;
@@ -223,29 +61,26 @@ public class WaterfallHazardVolume : MonoBehaviour
     private void Awake()
     {
         boxCollider = GetComponent<BoxCollider2D>();
+        if (boxCollider != null)
+        {
+            boxCollider.isTrigger = true;
+        }
     }
 
     private void Update()
     {
-        if (boxCollider == null)
-        {
-            return;
-        }
+        if (boxCollider == null) return;
 
         if (purly == null)
         {
-            purly = FindFirstObjectByType<PurlyMovement>();
+            purly = Object.FindAnyObjectByType<PurlyMovement>();
             purlyCollider = purly != null ? purly.GetComponent<Collider2D>() : null;
         }
 
-        if (purly == null || purlyCollider == null)
-        {
-            return;
-        }
+        if (purly == null || purlyCollider == null) return;
 
-        Bounds hazardBounds = boxCollider.bounds;
-        hazardBounds.Expand(0.15f);
-        if (hazardBounds.Intersects(purlyCollider.bounds))
+        // Perform a precise intersection check between bounds
+        if (boxCollider.bounds.Intersects(purlyCollider.bounds))
         {
             MeltPurly(purly);
         }
@@ -256,29 +91,39 @@ public class WaterfallHazardVolume : MonoBehaviour
         TryMelt(other);
     }
 
-    private void OnTriggerStay2D(Collider2D other)
-    {
-        TryMelt(other);
-    }
-
     private void TryMelt(Collider2D other)
     {
-        PurlyMovement purly = other.GetComponentInParent<PurlyMovement>();
-        if (purly == null || SnowmanGameManager.Instance == null)
+        PurlyMovement p = other.GetComponent<PurlyMovement>();
+        if (p == null) p = other.GetComponentInParent<PurlyMovement>();
+        
+        if (p != null)
         {
-            return;
+            MeltPurly(p);
         }
-
-        MeltPurly(purly);
     }
 
-    private void MeltPurly(PurlyMovement purly)
+    private void MeltPurly(PurlyMovement p)
     {
-        if (purly == null || SnowmanGameManager.Instance == null)
+        if (SnowmanGameManager.Instance != null)
         {
-            return;
+            SnowmanGameManager.Instance.HandlePurlyMelted(p);
         }
+    }
 
-        SnowmanGameManager.Instance.HandlePurlyMelted(purly);
+    // This makes the hazard volume visible in the scene view for easier editing
+    private void OnDrawGizmos()
+    {
+        if (boxCollider == null) boxCollider = GetComponent<BoxCollider2D>();
+        if (boxCollider != null)
+        {
+            Gizmos.color = hazardColor;
+            Gizmos.matrix = transform.localToWorldMatrix;
+            Gizmos.DrawCube(boxCollider.offset, boxCollider.size);
+            
+            // Draw a slightly brighter outline
+            Gizmos.color = new Color(hazardColor.r, hazardColor.g, hazardColor.b, 1.0f);
+            Gizmos.DrawWireCube(boxCollider.offset, boxCollider.size);
+        }
     }
 }
+

@@ -6,7 +6,7 @@ public class SnowGun : MonoBehaviour
     [SerializeField] private float minSnowballSpeed = 5f;
     [SerializeField] private float maxSnowballSpeed = 10f;
     [SerializeField] private Vector2 targetRandomOffset = new Vector2(0.75f, 1.2f);
-    [SerializeField] private float verticalSpawnOffset = -1.45f;
+    [SerializeField] private float verticalSpawnOffset = -1.05f;
     [SerializeField] private float forwardSpawnOffset = 0.65f;
     [SerializeField] private float minTargetY = -1.25f;
     [SerializeField] private float maxTargetY = 1.35f;
@@ -98,7 +98,7 @@ public class SnowGun : MonoBehaviour
 
     private float GetHorizontalDirection()
     {
-        return transform.position.x < 0f ? 1f : -1f;
+        return transform.localPosition.x < 0f ? 1f : -1f;
     }
 
     private GameObject CreateSimpleSnowball(Vector3 spawnPosition)

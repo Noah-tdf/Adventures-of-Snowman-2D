@@ -7,51 +7,22 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.Events;
 
 public class SnowmanGameManager : MonoBehaviour
 {
     private const string MainMenuSceneName = "MainMenu";
     private const string GameplaySceneName = "Adventure of A Snowman 2D";
 
-    private enum StartMode
-    {
-        Landing,
-        NewGame,
-        ResumeSaved
-    }
-
-    private enum GameState
-    {
-        Landing,
-        Playing,
-        Paused,
-        GameOver
-    }
+    private enum StartMode { Landing, NewGame, ResumeSaved }
+    private enum GameState { Landing, Playing, Paused, GameOver }
 
     [Serializable]
-    private class ScoreEntry
-    {
-        public string playerName;
-        public int score;
-        public string date;
-    }
-
+    private class ScoreEntry { public string playerName; public int score; public string date; }
     [Serializable]
-    private class ScoreHistory
-    {
-        public List<ScoreEntry> entries = new List<ScoreEntry>();
-    }
-
+    private class ScoreHistory { public List<ScoreEntry> entries = new List<ScoreEntry>(); }
     [Serializable]
-    private class SavedGameData
-    {
-        public string playerName;
-        public int score;
-        public float playerX;
-        public float playerY;
-        public float playerZ;
-        public float middleSphereYRotation;
-    }
+    private class SavedGameData { public string playerName; public int score; public float playerX; public float playerY; public float playerZ; public float middleSphereYRotation; }
 
     public static SnowmanGameManager Instance { get; private set; }
     public bool GameIsPaused => currentState == GameState.Paused;
@@ -72,27 +43,21 @@ public class SnowmanGameManager : MonoBehaviour
     private string currentPlayerName = "Player";
     private int currentScore;
 
+    [Header("Events")]
+    public UnityEvent onShowLanding;
+    public UnityEvent onStartGame;
+    public UnityEvent onPurlyDeath;
+
     private Canvas mainCanvas;
     private MainMenuCanvas mainMenuCanvas;
     private PauseCanvas pauseCanvas;
     private HudCanvas hudCanvas;
-    private GameObject menuPanel;
-    private GameObject highScorePanel;
-    private GameObject hudPanel;
-    private Image menuPanelImage;
-    private Image buttonGroupImage;
+    private GameObject menuPanel, highScorePanel, hudPanel;
+    private Image menuPanelImage, buttonGroupImage;
     private Outline buttonGroupOutline;
     private RectTransform buttonGroupRect;
-    private Text scoreText;
-    private Text menuTitleText;
-    private Text highScoreText;
-    private Button pauseButton;
-    private Button restartButton;
-    private Button resumeButton;
-    private Button newGameButton;
-    private Button saveGameButton;
-    private Button highScoresButton;
-    private Button exitButton;
+    private Text scoreText, menuTitleText, highScoreText;
+    private Button pauseButton, restartButton, resumeButton, newGameButton, saveGameButton, highScoresButton, exitButton;
     private InputField playerNameField;
     private Sprite landingBackgroundSprite;
 
@@ -102,105 +67,63 @@ public class SnowmanGameManager : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
     {
-        if (FindFirstObjectByType<SnowmanGameManager>() != null)
-        {
-            return;
-        }
-
-        GameObject managerObject = new GameObject("SnowmanGameManager");
-        managerObject.AddComponent<SnowmanGameManager>();
+        if (FindFirstObjectByType<SnowmanGameManager>() != null) return;
+        new GameObject("SnowmanGameManager", typeof(SnowmanGameManager));
     }
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
-        balloonManager = gameObject.AddComponent<BalloonManager>();
+        balloonManager = GetComponent<BalloonManager>();
+        if (balloonManager == null) balloonManager = gameObject.AddComponent<BalloonManager>();
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
-    private void OnDestroy()
-    {
-        if (Instance == this)
-        {
-            SceneManager.sceneLoaded -= OnSceneLoaded;
-        }
-    }
+    private void OnDestroy() { if (Instance == this) SceneManager.sceneLoaded -= OnSceneLoaded; }
 
     private void Start()
     {
         Time.timeScale = 1f;
         LoadScoreHistory();
-        if (mainCanvas == null)
-        {
-            BuildRuntimeUi();
-        }
-
+        if (mainCanvas == null) BuildRuntimeUi();
         OnSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
     }
 
     public void RegisterSnowGun(SnowGun snowGun)
     {
-        if (snowGun == null || snowGuns.Contains(snowGun))
-        {
-            return;
-        }
-
+        if (snowGun == null || snowGuns.Contains(snowGun)) return;
         snowGuns.Add(snowGun);
-        snowGuns.Sort((first, second) => first.transform.position.x.CompareTo(second.transform.position.x));
-        Debug.Log($"Registered gun: {snowGun.name} at x={snowGun.transform.position.x}");
+        snowGuns.RemoveAll(g => g == null);
+        snowGuns.Sort((a, b) => a.transform.position.x.CompareTo(b.transform.position.x));
     }
 
-    public void RegisterBalloon(Balloon balloon)
-    {
-        balloonManager.RegisterBalloon(balloon);
-    }
+    public void RegisterBalloon(Balloon balloon) => balloonManager.RegisterBalloon(balloon);
 
     public void PopBalloon(Balloon balloon)
     {
-        if (currentState != GameState.Playing)
-        {
-            return;
-        }
-
-        currentScore += 1;
+        if (currentState != GameState.Playing) return;
+        currentScore += balloon.ScoreValue;
         UpdateScoreText();
         balloonManager.HandleBalloonPopped(balloon);
     }
 
-    public void HandlePurlyHit(PurlyMovement hitPurly)
-    {
-        HandlePurlyDeath(hitPurly, "Purly Was Hit");
-    }
-
-    public void HandlePurlyMelted(PurlyMovement meltedPurly)
-    {
-        HandlePurlyDeath(meltedPurly, "Purly Melted");
-    }
+    public void HandlePurlyHit(PurlyMovement hitPurly) => HandlePurlyDeath(hitPurly, "Purly Was Hit");
+    public void HandlePurlyMelted(PurlyMovement meltedPurly) => HandlePurlyDeath(meltedPurly, "Purly Melted");
 
     private void HandlePurlyDeath(PurlyMovement purlyToDestroy, string gameOverMessage)
     {
-        if (currentState != GameState.Playing)
-        {
-            return;
-        }
-
-        if (purlyToDestroy != null)
-        {
-            Destroy(purlyToDestroy.gameObject);
-        }
+        if (currentState != GameState.Playing) return;
+        if (purlyToDestroy != null) Destroy(purlyToDestroy.gameObject);
 
         SaveFinishedScore();
         DeleteSavedGame();
         currentState = GameState.GameOver;
         Time.timeScale = 0f;
         StopGunRoutine();
+
+        onPurlyDeath?.Invoke();
 
         if (pauseCanvas != null)
         {
@@ -215,46 +138,29 @@ public class SnowmanGameManager : MonoBehaviour
             highScorePanel.SetActive(false);
             hudPanel.SetActive(true);
         }
-
-        if (pauseButton != null)
-        {
-            pauseButton.interactable = false;
-        }
-
-        if (resumeButton != null)
-        {
-            resumeButton.interactable = false;
-        }
-
-        if (restartButton != null)
-        {
-            restartButton.interactable = true;
-        }
-
-        if (saveGameButton != null)
-        {
-            saveGameButton.interactable = false;
-        }
     }
 
-    private void ApplyPendingStartMode()
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        if (pendingStartMode == StartMode.NewGame)
+        Time.timeScale = 1f;
+        CreateEventSystem();
+        UpdateSceneReferences();
+        PositionHudButtons();
+        
+        if (scene.name == MainMenuSceneName)
         {
-            StartNewGameInternal(pendingPlayerName);
+            ShowLandingPage();
         }
-        else if (pendingStartMode == StartMode.ResumeSaved)
+        else
         {
-            ResumeSavedGameInternal();
+            ApplyPendingStartMode();
+            if (currentState == GameState.Landing) ShowLandingPage();
         }
-
-        pendingStartMode = StartMode.Landing;
     }
 
     private void UpdateSceneReferences()
     {
         snowGuns.Clear();
-        lastFiredGun = null;
         mainMenuCanvas = FindFirstObjectByType<MainMenuCanvas>(FindObjectsInactive.Include);
         pauseCanvas = FindFirstObjectByType<PauseCanvas>(FindObjectsInactive.Include);
         hudCanvas = FindFirstObjectByType<HudCanvas>(FindObjectsInactive.Include);
@@ -267,63 +173,33 @@ public class SnowmanGameManager : MonoBehaviour
             ApplyHudButtonIcons();
         }
 
-        if (mainMenuCanvas == null && pauseCanvas == null && hudCanvas == null && mainCanvas == null)
-        {
-            BuildRuntimeUi();
-        }
-
-        if (balloonManager == null)
-        {
-            balloonManager = GetComponent<BalloonManager>();
-        }
-
-        if (balloonManager == null)
-        {
-            balloonManager = gameObject.AddComponent<BalloonManager>();
-        }
-
-        balloonManager.ResetBalloons();
-
         purly = FindFirstObjectByType<PurlyMovement>();
+        if (balloonManager != null && purly != null) balloonManager.Initialize(purly.transform);
+        else if (balloonManager != null) balloonManager.ResetBalloons();
 
-        SnowGun[] sceneSnowGuns = FindObjectsByType<SnowGun>(FindObjectsSortMode.None);
-        for (int i = 0; i < sceneSnowGuns.Length; i++)
-        {
-            RegisterSnowGun(sceneSnowGuns[i]);
-        }
-
-        Balloon[] sceneBalloons = FindObjectsByType<Balloon>(FindObjectsSortMode.None);
-        for (int i = 0; i < sceneBalloons.Length; i++)
-        {
-            RegisterBalloon(sceneBalloons[i]);
-        }
-
-        WaterfallHazardTilemap.AddHazardsToCurrentScene();
-    }
-
-    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-    {
-        Time.timeScale = 1f;
-        CreateEventSystem();
-        UpdateSceneReferences();
-        PositionHudButtons();
-
-        StartMode requestedMode = pendingStartMode;
-        ApplyPendingStartMode();
-
-        if (requestedMode == StartMode.Landing)
-        {
-            ShowLandingPage();
-        }
+        foreach (var gun in FindObjectsByType<SnowGun>(FindObjectsSortMode.None)) RegisterSnowGun(gun);
+        foreach (var b in FindObjectsByType<Balloon>(FindObjectsSortMode.None)) RegisterBalloon(b);
     }
 
     private void ShowLandingPage()
     {
+        Debug.Log("GameManager: Transitioning to Landing Page Music (music_1)...");
         currentState = GameState.Landing;
         Time.timeScale = 0f;
         StopGunRoutine();
+
+        // Ensure Music_Landing is playing and Music_Gameplay is stopped
+        var musicLanding = transform.Find("Music_Landing")?.GetComponent<AudioSource>();
+        var musicGameplay = transform.Find("Music_Gameplay")?.GetComponent<AudioSource>();
+        
+        if (musicLanding != null) { if (!musicLanding.isPlaying) musicLanding.Play(); }
+        if (musicGameplay != null) { musicGameplay.Stop(); }
+
+        // Also trigger events for any other linked behavior
+        onShowLanding?.Invoke();
+
         if (mainMenuCanvas != null)
-        {
+{
             mainMenuCanvas.gameObject.SetActive(true);
             mainMenuCanvas.ShowMenu();
             mainMenuCanvas.SetPlayerName(currentPlayerName);
@@ -331,37 +207,24 @@ public class SnowmanGameManager : MonoBehaviour
         else
         {
             SetLandingMenuLook();
-            menuTitleText.text = string.Empty;
+            if (menuTitleText != null) menuTitleText.text = string.Empty;
             ShowPanels(true, false, false);
-            saveGameButton.interactable = File.Exists(SaveFilePath);
+            if (saveGameButton != null) saveGameButton.interactable = File.Exists(SaveFilePath);
         }
-
-        if (pauseCanvas != null)
-        {
-            pauseCanvas.HidePause();
-        }
-
-        if (hudCanvas != null)
-        {
-            hudCanvas.ShowHud(false);
-        }
-
+if (pauseCanvas != null) pauseCanvas.HidePause();
+        if (hudCanvas != null) hudCanvas.ShowHud(false);
         UpdateScoreText();
     }
 
     public void StartNewGame()
     {
-        string playerNameToUse = GetTypedPlayerName();
-
+        string name = GetTypedPlayerName();
         if (SceneManager.GetActiveScene().name != GameplaySceneName || purly == null || currentState == GameState.GameOver)
         {
-            StopGunRoutine();
-            Time.timeScale = 1f;
-            LoadGameplayScene(StartMode.NewGame, playerNameToUse);
+            LoadGameplayScene(StartMode.NewGame, name);
             return;
         }
-
-        StartNewGameInternal(playerNameToUse);
+        StartNewGameInternal(name);
     }
 
     private void StartNewGameInternal(string playerName)
@@ -370,6 +233,7 @@ public class SnowmanGameManager : MonoBehaviour
         currentPlayerName = playerName;
         currentScore = 0;
         currentState = GameState.Playing;
+        onStartGame?.Invoke();
         DeleteSavedGame();
         HideAllMenuUi();
         ShowPlayingUi();
@@ -379,11 +243,7 @@ public class SnowmanGameManager : MonoBehaviour
 
     public void PauseGame()
     {
-        if (currentState != GameState.Playing)
-        {
-            return;
-        }
-
+        if (currentState != GameState.Playing) return;
         SaveCurrentGame();
         currentState = GameState.Paused;
         Time.timeScale = 0f;
@@ -392,53 +252,33 @@ public class SnowmanGameManager : MonoBehaviour
             pauseCanvas.ShowPause("Game Paused");
             pauseCanvas.PrepareHighScores(BuildHighScoreText());
         }
-        else
-        {
-            SetOverlayMenuLook();
-            menuTitleText.text = "Game Paused";
-            ShowPanels(true, false, true);
-            resumeButton.interactable = true;
-            pauseButton.interactable = false;
-            saveGameButton.interactable = true;
-        }
     }
 
     public void ResumeGame()
     {
-        if (currentState != GameState.Paused)
-        {
-            return;
-        }
-
+        if (currentState != GameState.Paused) return;
         currentState = GameState.Playing;
         ShowPlayingUi();
         EnsureGunRoutine();
     }
 
-    public void RestartGame()
-    {
-        StopGunRoutine();
-        Time.timeScale = 1f;
-        LoadGameplayScene(StartMode.NewGame, GetTypedPlayerName());
-    }
+    public void RestartGame() { LoadGameplayScene(StartMode.NewGame, GetTypedPlayerName()); }
 
     public void LoadSavedGame()
     {
-        if (currentState == GameState.Paused)
-        {
-            ResumeGame();
-            return;
-        }
-
+        if (currentState == GameState.Paused) { ResumeGame(); return; }
         if (SceneManager.GetActiveScene().name != GameplaySceneName || purly == null)
         {
-            StopGunRoutine();
-            Time.timeScale = 1f;
             LoadGameplayScene(StartMode.ResumeSaved, GetTypedPlayerName());
             return;
         }
-
         ResumeSavedGameInternal();
+    }
+
+    public void ShowHighScores()
+    {
+        string text = BuildHighScoreText();
+        if (mainMenuCanvas != null) mainMenuCanvas.ShowHighScores(text);
     }
 
     public void ReturnToMainMenu()
@@ -449,342 +289,76 @@ public class SnowmanGameManager : MonoBehaviour
         SceneManager.LoadScene(MainMenuSceneName);
     }
 
+    private void ApplyPendingStartMode()
+{
+        if (pendingStartMode == StartMode.NewGame) StartNewGameInternal(pendingPlayerName);
+        else if (pendingStartMode == StartMode.ResumeSaved) ResumeSavedGameInternal();
+        pendingStartMode = StartMode.Landing;
+    }
+
     private void ResumeSavedGameInternal()
     {
         UpdateSceneReferences();
-
-        if (!TryLoadSavedGame(out SavedGameData savedGame))
-        {
-            ShowLandingPage();
-            return;
-        }
-
-        currentPlayerName = string.IsNullOrWhiteSpace(savedGame.playerName) ? "Player" : savedGame.playerName;
-        currentScore = savedGame.score;
+        if (!TryLoadSavedGame(out SavedGameData data)) { ShowLandingPage(); return; }
+        currentPlayerName = data.playerName;
+        currentScore = data.score;
         currentState = GameState.Playing;
-
-        if (mainMenuCanvas != null)
-        {
-            mainMenuCanvas.SetPlayerName(currentPlayerName);
-        }
-        else if (playerNameField != null)
-        {
-            playerNameField.text = currentPlayerName;
-        }
-
-        if (purly != null)
-        {
-            purly.RestoreSavedState(
-                new Vector3(savedGame.playerX, savedGame.playerY, savedGame.playerZ),
-                savedGame.middleSphereYRotation);
-        }
-
+        if (purly != null) purly.RestoreSavedState(new Vector3(data.playerX, data.playerY, data.playerZ), data.middleSphereYRotation);
         ShowPlayingUi();
         UpdateScoreText();
         EnsureGunRoutine();
     }
 
-    public void ShowHighScores()
-    {
-        string scoreList = BuildHighScoreText();
-
-        if (currentState == GameState.Paused && pauseCanvas != null)
-        {
-            pauseCanvas.PrepareHighScores(scoreList);
-            pauseCanvas.ToggleHighScores();
-            return;
-        }
-
-        if (mainMenuCanvas != null)
-        {
-            mainMenuCanvas.ShowHighScores(scoreList);
-            return;
-        }
-
-        highScorePanel.SetActive(true);
-        highScoreText.text = scoreList;
-    }
-
-    public void QuitGame()
-    {
+    public void QuitGame() { 
 #if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
+        UnityEditor.EditorApplication.isPlaying = false; 
 #else
-        Application.Quit();
+        Application.Quit(); 
 #endif
     }
 
-    private void EnsureGunRoutine()
-    {
-        StopGunRoutine();
-        gunRoutine = StartCoroutine(GunLoop());
-    }
-
-    private void StopGunRoutine()
-    {
-        if (gunRoutine != null)
-        {
-            StopCoroutine(gunRoutine);
-            gunRoutine = null;
-        }
-    }
+    private void EnsureGunRoutine() { StopGunRoutine(); gunRoutine = StartCoroutine(GunLoop()); }
+    private void StopGunRoutine() { if (gunRoutine != null) { StopCoroutine(gunRoutine); gunRoutine = null; } }
 
     private IEnumerator GunLoop()
     {
         while (currentState == GameState.Playing)
         {
-            if (snowGuns.Count == 0)
+            if (snowGuns.Count > 0)
             {
-                yield return null;
-                continue;
+                SnowGun gun = snowGuns[UnityEngine.Random.Range(0, snowGuns.Count)];
+                if (gun != lastFiredGun) { gun.FireAt(purly != null ? purly.transform : null); lastFiredGun = gun; }
             }
-
-            SnowGun activeGun = GetRandomGunThatDidNotFireLast();
-            if (activeGun != null)
-            {
-                Debug.Log($"Firing gun {activeGun.name} at x={activeGun.transform.position.x}");
-                activeGun.FireAt(purly != null ? purly.transform : null);
-                lastFiredGun = activeGun;
-            }
-
             yield return new WaitForSeconds(UnityEngine.Random.Range(MinGunWaitTime, MaxGunWaitTime));
         }
     }
 
-    private SnowGun GetRandomGunThatDidNotFireLast()
-    {
-        if (snowGuns.Count == 1)
-        {
-            return snowGuns[0];
-        }
-
-        SnowGun selectedGun = null;
-        for (int attempts = 0; attempts < 12; attempts++)
-        {
-            selectedGun = snowGuns[UnityEngine.Random.Range(0, snowGuns.Count)];
-            if (selectedGun != null && selectedGun != lastFiredGun)
-            {
-                return selectedGun;
-            }
-        }
-
-        for (int i = 0; i < snowGuns.Count; i++)
-        {
-            if (snowGuns[i] != null && snowGuns[i] != lastFiredGun)
-            {
-                return snowGuns[i];
-            }
-        }
-
-        return selectedGun;
-    }
-
-    private void ReloadCurrentScene(StartMode startMode, string playerName)
-    {
-        pendingPlayerName = playerName;
-        pendingStartMode = startMode;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
-    }
-
-    private void LoadGameplayScene(StartMode startMode, string playerName)
-    {
-        pendingPlayerName = playerName;
-        pendingStartMode = startMode;
-        SceneManager.LoadScene(GameplaySceneName);
-    }
+    private void LoadGameplayScene(StartMode mode, string name) { pendingPlayerName = name; pendingStartMode = mode; SceneManager.LoadScene(GameplaySceneName); }
 
     private void ShowPlayingUi()
     {
         HideAllMenuUi();
-
-        if (mainMenuCanvas != null)
-        {
-            mainMenuCanvas.gameObject.SetActive(false);
-        }
-
-        if (pauseCanvas != null)
-        {
-            pauseCanvas.HidePause();
-        }
-
-        if (hudCanvas != null)
-        {
-            hudCanvas.ShowHud(true);
-        }
-        else
-        {
-            ShowPanels(false, false, true);
-            PositionHudButtons();
-        }
-
+        if (hudCanvas != null) hudCanvas.ShowHud(true);
         Time.timeScale = 1f;
-        if (pauseButton != null)
-        {
-            pauseButton.interactable = true;
-        }
-
-        if (restartButton != null)
-        {
-            restartButton.interactable = true;
-        }
-
-        if (resumeButton != null)
-        {
-            resumeButton.interactable = false;
-        }
     }
 
     private void HideAllMenuUi()
     {
-        if (mainMenuCanvas != null)
-        {
-            mainMenuCanvas.gameObject.SetActive(false);
-        }
-
-        if (pauseCanvas != null)
-        {
-            pauseCanvas.HidePause();
-        }
-
-        if (menuPanel != null)
-        {
-            menuPanel.SetActive(false);
-        }
-
-        if (highScorePanel != null)
-        {
-            highScorePanel.SetActive(false);
-        }
+        if (mainMenuCanvas != null) mainMenuCanvas.gameObject.SetActive(false);
+        if (pauseCanvas != null) pauseCanvas.HidePause();
+        if (menuPanel != null) menuPanel.SetActive(false);
     }
 
-    private void ShowPanels(bool showMenu, bool showHighScores, bool showHud)
-    {
-        menuPanel.SetActive(showMenu);
-        highScorePanel.SetActive(showHighScores);
-        hudPanel.SetActive(showHud);
-    }
+    private void ShowPanels(bool menu, bool scores, bool hud) { menuPanel.SetActive(menu); highScorePanel.SetActive(scores); hudPanel.SetActive(hud); }
 
-    private void SaveCurrentGame()
-    {
-        if (purly == null)
-        {
-            return;
-        }
-
-        SavedGameData savedGame = new SavedGameData
-        {
-            playerName = currentPlayerName,
-            score = currentScore,
-            playerX = purly.GetCurrentPosition().x,
-            playerY = purly.GetCurrentPosition().y,
-            playerZ = purly.GetCurrentPosition().z,
-            middleSphereYRotation = purly.GetMiddleSphereRotationY()
-        };
-
-        File.WriteAllText(SaveFilePath, JsonUtility.ToJson(savedGame, true));
-    }
-
-    private bool TryLoadSavedGame(out SavedGameData savedGame)
-    {
-        savedGame = null;
-
-        if (!File.Exists(SaveFilePath))
-        {
-            return false;
-        }
-
-        string json = File.ReadAllText(SaveFilePath);
-        savedGame = JsonUtility.FromJson<SavedGameData>(json);
-        return savedGame != null;
-    }
-
-    private void DeleteSavedGame()
-    {
-        if (File.Exists(SaveFilePath))
-        {
-            File.Delete(SaveFilePath);
-        }
-    }
-
-    private void SaveFinishedScore()
-    {
-        ScoreEntry newEntry = new ScoreEntry
-        {
-            playerName = currentPlayerName,
-            score = currentScore,
-            date = DateTime.Now.ToString("yyyy-MM-dd HH:mm")
-        };
-
-        scoreHistory.entries.Add(newEntry);
-        scoreHistory.entries.Sort((first, second) => second.score.CompareTo(first.score));
-        File.WriteAllText(ScoreFilePath, JsonUtility.ToJson(scoreHistory, true));
-    }
-
-    private void LoadScoreHistory()
-    {
-        if (!File.Exists(ScoreFilePath))
-        {
-            scoreHistory = new ScoreHistory();
-            return;
-        }
-
-        string json = File.ReadAllText(ScoreFilePath);
-        scoreHistory = JsonUtility.FromJson<ScoreHistory>(json);
-
-        if (scoreHistory == null)
-        {
-            scoreHistory = new ScoreHistory();
-        }
-    }
-
-    private string BuildHighScoreText()
-    {
-        if (scoreHistory.entries == null || scoreHistory.entries.Count == 0)
-        {
-            return "No scores saved yet.";
-        }
-
-        scoreHistory.entries.Sort((first, second) => second.score.CompareTo(first.score));
-
-        int amountToShow = Mathf.Min(5, scoreHistory.entries.Count);
-        string lines = "Top 5 Scores\n";
-
-        for (int i = 0; i < amountToShow; i++)
-        {
-            ScoreEntry entry = scoreHistory.entries[i];
-            lines += $"{i + 1}. {entry.playerName} - {entry.score}\n";
-        }
-
-        return lines.TrimEnd();
-    }
-
-    private void UpdateScoreText()
-    {
-        if (hudCanvas != null)
-        {
-            hudCanvas.SetScore(currentScore);
-        }
-
-        if (scoreText != null)
-        {
-            scoreText.text = $"Score: {currentScore:00}";
-        }
-    }
-
-    private string GetTypedPlayerName()
-    {
-        if (mainMenuCanvas != null)
-        {
-            return mainMenuCanvas.PlayerName;
-        }
-
-        if (playerNameField == null || string.IsNullOrWhiteSpace(playerNameField.text))
-        {
-            return "Player";
-        }
-
-        return playerNameField.text.Trim();
-    }
+    private void SaveCurrentGame() { if (purly == null) return; SavedGameData data = new SavedGameData { playerName = currentPlayerName, score = currentScore, playerX = purly.GetCurrentPosition().x, playerY = purly.GetCurrentPosition().y, playerZ = purly.GetCurrentPosition().z, middleSphereYRotation = purly.GetMiddleSphereRotationY() }; File.WriteAllText(SaveFilePath, JsonUtility.ToJson(data, true)); }
+    private bool TryLoadSavedGame(out SavedGameData data) { data = null; if (!File.Exists(SaveFilePath)) return false; data = JsonUtility.FromJson<SavedGameData>(File.ReadAllText(SaveFilePath)); return data != null; }
+    private void DeleteSavedGame() { if (File.Exists(SaveFilePath)) File.Delete(SaveFilePath); }
+    private void SaveFinishedScore() { ScoreEntry entry = new ScoreEntry { playerName = currentPlayerName, score = currentScore, date = DateTime.Now.ToString("yyyy-MM-dd HH:mm") }; scoreHistory.entries.Add(entry); scoreHistory.entries.Sort((a, b) => b.score.CompareTo(a.score)); File.WriteAllText(ScoreFilePath, JsonUtility.ToJson(scoreHistory, true)); }
+    private void LoadScoreHistory() { if (File.Exists(ScoreFilePath)) scoreHistory = JsonUtility.FromJson<ScoreHistory>(File.ReadAllText(ScoreFilePath)) ?? new ScoreHistory(); }
+    private string BuildHighScoreText() { if (scoreHistory.entries.Count == 0) return "No scores yet."; string s = "Top 5 Scores\n"; for (int i = 0; i < Math.Min(5, scoreHistory.entries.Count); i++) s += $"{i+1}. {scoreHistory.entries[i].playerName} - {scoreHistory.entries[i].score}\n"; return s; }
+    private void UpdateScoreText() { if (hudCanvas != null) hudCanvas.SetScore(currentScore); if (scoreText != null) scoreText.text = $"Score: {currentScore:00}"; }
+    private string GetTypedPlayerName() => mainMenuCanvas != null ? mainMenuCanvas.PlayerName : (playerNameField != null ? playerNameField.text : "Player");
 
     private void BuildRuntimeUi()
     {
@@ -868,21 +442,13 @@ public class SnowmanGameManager : MonoBehaviour
 
     private void CreateEventSystem()
     {
-        EventSystem existingEventSystem = FindFirstObjectByType<EventSystem>();
-        if (existingEventSystem != null)
-        {
-            return;
-        }
-
-        GameObject eventSystemObject = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
-        eventSystemObject.transform.SetParent(transform, false);
-        InputSystemUIInputModule inputModule = eventSystemObject.GetComponent<InputSystemUIInputModule>();
-        inputModule.AssignDefaultActions();
+        if (FindFirstObjectByType<EventSystem>() != null) return;
+        new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule)).GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
     }
 
-    private static GameObject CreatePanel(string objectName, Transform parent, Color color, Vector2 anchorMin, Vector2 anchorMax, Vector2 size, Vector2 anchoredPosition)
+    private GameObject CreatePanel(string name, Transform parent, Color color, Vector2 anchorMin, Vector2 anchorMax, Vector2 size, Vector2 anchoredPosition)
     {
-        GameObject panelObject = new GameObject(objectName, typeof(Image));
+        GameObject panelObject = new GameObject(name, typeof(Image));
         panelObject.transform.SetParent(parent, false);
         Image image = panelObject.GetComponent<Image>();
         image.color = color;
@@ -896,9 +462,9 @@ public class SnowmanGameManager : MonoBehaviour
         return panelObject;
     }
 
-    private static Text CreateText(string objectName, Transform parent, Font font, string value, int fontSize, TextAnchor alignment, Color color)
+    private Text CreateText(string name, Transform parent, Font font, string value, int fontSize, TextAnchor alignment, Color color)
     {
-        GameObject textObject = new GameObject(objectName, typeof(Text));
+        GameObject textObject = new GameObject(name, typeof(Text));
         textObject.transform.SetParent(parent, false);
         Text textComponent = textObject.GetComponent<Text>();
         textComponent.font = font;
@@ -914,9 +480,9 @@ public class SnowmanGameManager : MonoBehaviour
         return textComponent;
     }
 
-    private static Button CreateButton(string objectName, Transform parent, Font font, string label, Vector2 anchoredPosition, Vector2 size, UnityEngine.Events.UnityAction onClick)
+    private Button CreateButton(string name, Transform parent, Font font, string label, Vector2 anchoredPosition, Vector2 size, UnityEngine.Events.UnityAction onClick)
     {
-        GameObject buttonObject = new GameObject(objectName, typeof(Image), typeof(Outline), typeof(Button));
+        GameObject buttonObject = new GameObject(name, typeof(Image), typeof(Outline), typeof(Button));
         buttonObject.transform.SetParent(parent, false);
 
         Image image = buttonObject.GetComponent<Image>();
@@ -942,7 +508,7 @@ public class SnowmanGameManager : MonoBehaviour
         return button;
     }
 
-    private static InputField CreateInputField(Transform parent, Font font, Vector2 anchoredPosition, Vector2 size)
+    private InputField CreateInputField(Transform parent, Font font, Vector2 anchoredPosition, Vector2 size)
     {
         GameObject inputObject = new GameObject("PlayerNameInput", typeof(Image), typeof(Outline), typeof(InputField));
         inputObject.transform.SetParent(parent, false);
@@ -977,13 +543,6 @@ public class SnowmanGameManager : MonoBehaviour
         return inputField;
     }
 
-    private static void SetTopRightAnchor(RectTransform rectTransform)
-    {
-        rectTransform.anchorMin = new Vector2(1f, 1f);
-        rectTransform.anchorMax = new Vector2(1f, 1f);
-        rectTransform.pivot = new Vector2(1f, 1f);
-    }
-
     private static void SetMiddleRightAnchor(RectTransform rectTransform)
     {
         rectTransform.anchorMin = new Vector2(1f, 0.5f);
@@ -993,10 +552,7 @@ public class SnowmanGameManager : MonoBehaviour
 
     private void PositionHudButtons()
     {
-        if (resumeButton == null || pauseButton == null || restartButton == null)
-        {
-            return;
-        }
+        if (resumeButton == null || pauseButton == null || restartButton == null) return;
 
         RectTransform resumeRect = resumeButton.GetComponent<RectTransform>();
         RectTransform pauseRect = pauseButton.GetComponent<RectTransform>();
@@ -1033,16 +589,9 @@ public class SnowmanGameManager : MonoBehaviour
 
     private static void StyleIconButton(Button button, Sprite sprite)
     {
-        if (button == null)
-        {
-            return;
-        }
-
+        if (button == null) return;
         Image image = button.GetComponent<Image>();
-        if (image == null)
-        {
-            return;
-        }
+        if (image == null) return;
 
         image.color = Color.white;
         image.sprite = sprite;
@@ -1050,25 +599,13 @@ public class SnowmanGameManager : MonoBehaviour
         image.preserveAspect = true;
 
         Text label = button.GetComponentInChildren<Text>();
-        if (label != null)
-        {
-            label.text = string.Empty;
-        }
+        if (label != null) label.text = string.Empty;
     }
 
     private static void AddTextOutline(Text textComponent, Color outlineColor, Vector2 outlineDistance)
     {
-        if (textComponent == null)
-        {
-            return;
-        }
-
-        Outline outline = textComponent.GetComponent<Outline>();
-        if (outline == null)
-        {
-            outline = textComponent.gameObject.AddComponent<Outline>();
-        }
-
+        if (textComponent == null) return;
+        Outline outline = textComponent.gameObject.GetComponent<Outline>() ?? textComponent.gameObject.AddComponent<Outline>();
         outline.effectColor = outlineColor;
         outline.effectDistance = outlineDistance;
     }
@@ -1076,27 +613,15 @@ public class SnowmanGameManager : MonoBehaviour
     private static Sprite LoadSpriteFromResources(string resourcePath)
     {
         Texture2D texture = Resources.Load<Texture2D>(resourcePath);
-        if (texture == null)
-        {
-            return null;
-        }
-
-        return Sprite.Create(
-            texture,
-            new Rect(0f, 0f, texture.width, texture.height),
-            new Vector2(0.5f, 0.5f),
-            100f);
+        if (texture == null) return null;
+        return Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
     }
 
     private void ApplyHudButtonIcons()
     {
-        Sprite pauseSprite = LoadSpriteFromResources("UI/pauseBtn");
-        Sprite restartSprite = LoadSpriteFromResources("UI/restartBtn");
-        Sprite resumeSprite = LoadSpriteFromResources("UI/resumeBtn");
-
-        StyleIconButton(pauseButton, pauseSprite);
-        StyleIconButton(restartButton, restartSprite);
-        StyleIconButton(resumeButton, resumeSprite);
+        StyleIconButton(pauseButton, LoadSpriteFromResources("UI/pauseBtn"));
+        StyleIconButton(restartButton, LoadSpriteFromResources("UI/restartBtn"));
+        StyleIconButton(resumeButton, LoadSpriteFromResources("UI/resumeBtn"));
     }
 
     private void SetLandingMenuLook()
@@ -1126,10 +651,7 @@ public class SnowmanGameManager : MonoBehaviour
             buttonGroupRect.anchoredPosition = new Vector2(0f, -10f);
         }
 
-        if (menuTitleText != null)
-        {
-            menuTitleText.rectTransform.anchoredPosition = new Vector2(0f, 168f);
-        }
+        if (menuTitleText != null) menuTitleText.rectTransform.anchoredPosition = new Vector2(0f, 168f);
 
         if (playerNameField != null)
         {
@@ -1142,10 +664,7 @@ public class SnowmanGameManager : MonoBehaviour
         SetMenuButtonPosition(highScoresButton, -70f);
         SetMenuButtonPosition(exitButton, -126f);
 
-        if (highScorePanel != null)
-        {
-            highScorePanel.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -248f);
-        }
+        if (highScorePanel != null) highScorePanel.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -248f);
     }
 
     private void SetOverlayMenuLook()
@@ -1175,34 +694,16 @@ public class SnowmanGameManager : MonoBehaviour
             buttonGroupRect.anchoredPosition = new Vector2(0f, 8f);
         }
 
-        if (menuTitleText != null)
-        {
-            menuTitleText.rectTransform.anchoredPosition = new Vector2(0f, 124f);
-        }
-
-        if (playerNameField != null)
-        {
-            playerNameField.gameObject.SetActive(false);
-        }
+        if (menuTitleText != null) menuTitleText.rectTransform.anchoredPosition = new Vector2(0f, 124f);
+        if (playerNameField != null) playerNameField.gameObject.SetActive(false);
 
         SetMenuButtonPosition(newGameButton, 48f);
         SetMenuButtonPosition(saveGameButton, -4f);
         SetMenuButtonPosition(highScoresButton, -56f);
         SetMenuButtonPosition(exitButton, -108f);
 
-        if (highScorePanel != null)
-        {
-            highScorePanel.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -228f);
-        }
+        if (highScorePanel != null) highScorePanel.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -228f);
     }
 
-    private static void SetMenuButtonPosition(Button button, float yPosition)
-    {
-        if (button == null)
-        {
-            return;
-        }
-
-        button.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, yPosition);
+    private void SetMenuButtonPosition(Button b, float y) { if (b != null) b.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, y); }
     }
-}

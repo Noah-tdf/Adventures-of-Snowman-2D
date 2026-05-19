@@ -4039,7 +4039,7 @@ MonoBehaviour:
   minSnowballSpeed: 5
   maxSnowballSpeed: 10
   targetRandomOffset: {x: 0.75, y: 1.2}
-  verticalSpawnOffset: -1.05
+  verticalSpawnOffset: -1.45
   forwardSpawnOffset: 0.65
   minTargetY: -1.25
   maxTargetY: 1.35
@@ -4463,7 +4463,7 @@ Transform:
   m_GameObject: {fileID: 343553859}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 10}
+  m_LocalPosition: {x: 0, y: 9.479088, z: 10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -4565,7 +4565,7 @@ ParticleSystem:
   ringBufferLoopRange: {x: 0, y: 1}
   emitterVelocityMode: 1
   looping: 1
-  prewarm: 1
+  prewarm: 0
   playOnAwake: 1
   useUnscaledTime: 0
   autoRandomSeed: 1
@@ -5188,7 +5188,7 @@ ParticleSystem:
     donutRadius: 0.2
     m_Position: {x: 0, y: 0, z: 0}
     m_Rotation: {x: 0, y: 0, z: 0}
-    m_Scale: {x: 34.36246, y: 18, z: 1}
+    m_Scale: {x: 34.36246, y: 0.7291606, z: 1}
     placementMode: 0
     m_MeshMaterialIndex: 0
     m_MeshNormalOffset: 0
@@ -5386,7 +5386,7 @@ ParticleSystem:
     rateOverTime:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 50
+      scalar: 350
       minScalar: 10
       maxCurve:
         serializedVersion: 2
@@ -12391,8 +12391,8 @@ Transform:
   m_GameObject: {fileID: 637903218}
   serializedVersion: 2
   m_LocalRotation: {x: -0.7071068, y: 0, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: 0.2, y: -0.4, z: 0}
-  m_LocalScale: {x: 1.2, y: 1.2, z: 1.2}
+  m_LocalPosition: {x: 0, y: -0.4, z: 0}
+  m_LocalScale: {x: 4.4444447, y: 4.4444447, z: 4.4444447}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 8281257700966734328}
@@ -12613,7 +12613,7 @@ ParticleSystem:
     startSpeed:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 1
+      scalar: 3
       minScalar: 5
       maxCurve:
         serializedVersion: 2
@@ -12731,7 +12731,7 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 0.28
+      scalar: 0.15
       minScalar: 1
       maxCurve:
         serializedVersion: 2
@@ -13109,7 +13109,7 @@ ParticleSystem:
     serializedVersion: 6
     enabled: 1
     type: 4
-    angle: 42
+    angle: 20
     length: 5
     boxThickness: {x: 0, y: 0, z: 0}
     radiusThickness: 1
@@ -13195,7 +13195,7 @@ ParticleSystem:
     sphericalDirectionAmount: 0
     randomPositionAmount: 0
     radius:
-      value: 0.45
+      value: 0.05
       mode: 0
       spread: 0
       speed:
@@ -19829,7 +19829,7 @@ Tilemap:
       - {fileID: -3542311446953266566, guid: 937666a89c8452e48ad9115ae079deca, type: 3}
       - {fileID: -7453614399891146440, guid: 937666a89c8452e48ad9115ae079deca, type: 3}
       - {fileID: 7625310551617944875, guid: 937666a89c8452e48ad9115ae079deca, type: 3}
-      m_AnimationSpeed: 6
+      m_AnimationSpeed: 6.0000005
       m_AnimationTimeOffset: 0
       m_Flags: 0
   m_TileAssetArray:
@@ -30639,7 +30639,7 @@ MonoBehaviour:
   minSnowballSpeed: 5
   maxSnowballSpeed: 10
   targetRandomOffset: {x: 0.75, y: 1.2}
-  verticalSpawnOffset: -1.05
+  verticalSpawnOffset: -1.45
   forwardSpawnOffset: 0.65
   minTargetY: -1.25
   maxTargetY: 1.35
